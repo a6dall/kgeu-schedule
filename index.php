@@ -458,9 +458,12 @@ function getLabInfo(string $subjectTitle, string $dateStr, array $timeline, arra
     $isChecked = !empty($todoState['checkboxes'][$todoKey]);
     $customTitle = $todoState['editedDefaults'][$todoKey] ?? null;
 
+    $label = $customTitle ?: "{$unit} №{$labNum}";
+    $label = trim((string)preg_replace('/^\s*TODO:\s*/iu', '', $label));
+
     return [
         'todoKey' => $todoKey,
-        'label' => $customTitle ?: "{$unit} №{$labNum}",
+        'label' => $label,
         'isChecked' => $isChecked
     ];
 }
@@ -482,7 +485,7 @@ function formatCustomDateTitle(string $dateStr): string {
     $d = date('d', $ts);
     $m = date('m', $ts);
     $y = date('Y', $ts);
-    return "{$dayName} - {$d}:{$m}:{$y}";
+    return "{$dayName} — {$d}.{$m}.{$y}";
 }
 
 // -------------------------------------------------------------
@@ -720,36 +723,14 @@ $dayGeneralNotes = array_filter(
 
         </div>
 
-        <!-- Фильтр типов занятий -->
-        <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm space-y-3">
-          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">Тип занятий</span>
-          <div class="grid grid-cols-2 gap-2 text-xs font-semibold">
-            <a href="<?= buildUrl(['type' => 'all']) ?>" class="py-2 px-3 rounded-xl transition text-left flex items-center justify-between <?= $typeFilter === 'all' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300' ?>">
-              <span>Все типы</span>
-            </a>
-            <a href="<?= buildUrl(['type' => 'lecture']) ?>" class="py-2 px-3 rounded-xl transition text-left flex items-center gap-1.5 <?= $typeFilter === 'lecture' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300' ?>">
-              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>Лекции</span>
-            </a>
-            <a href="<?= buildUrl(['type' => 'lab']) ?>" class="py-2 px-3 rounded-xl transition text-left flex items-center gap-1.5 <?= $typeFilter === 'lab' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300' ?>">
-              <span class="w-2 h-2 rounded-full bg-purple-500"></span>
-              <span>Лабораторные</span>
-            </a>
-            <a href="<?= buildUrl(['type' => 'practice']) ?>" class="py-2 px-3 rounded-xl transition text-left flex items-center gap-1.5 <?= $typeFilter === 'practice' ? 'bg-indigo-600 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300' ?>">
-              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
-              <span>Практики</span>
-            </a>
-          </div>
-        </div>
-
       </aside>
 
       <!-- ПРАВАЯ КОЛОНКА: Расписание занятий и Заметки -->
       <section class="lg:col-span-7 xl:col-span-8 space-y-4">
         
-        <!-- Заголовок дня -->
-        <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm flex items-center justify-between gap-3">
-          <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white capitalize truncate">
+        <!-- Заголовок дня и кнопки действий -->
+        <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white capitalize leading-tight">
             <?php if ($viewMode === 'day'): ?>
               <?= htmlspecialchars(formatCustomDateTitle($selectedDate)) ?>
             <?php else: 
@@ -759,13 +740,60 @@ $dayGeneralNotes = array_filter(
             <?php endif; ?>
           </h2>
 
-          <a 
-            href="#add-day-note" 
-            class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
-          >
-            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-            <span>+ Заметка на день</span>
-          </a>
+          <div class="flex items-center gap-2 shrink-0">
+            <!-- Отдельная всплывающая плашка с фильтрами -->
+            <details class="relative">
+              <summary class="cursor-pointer list-none inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition select-none">
+                <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
+                <span>
+                  <?php
+                    $filterLabels = [
+                      'all' => 'Фильтры',
+                      'lecture' => 'Лекции',
+                      'lab' => 'Лабораторные',
+                      'practice' => 'Практики'
+                    ];
+                    echo $filterLabels[$typeFilter] ?? 'Фильтры';
+                  ?>
+                </span>
+                <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </summary>
+
+              <!-- Плашка с выбором типов -->
+              <div class="absolute right-0 z-30 mt-2 w-52 origin-top-right rounded-2xl bg-white dark:bg-slate-900 p-2 shadow-2xl border border-slate-100 dark:border-slate-800">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 py-1.5">
+                  Тип занятий
+                </div>
+                <div class="space-y-1">
+                  <a href="<?= buildUrl(['type' => 'all']) ?>" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition <?= $typeFilter === 'all' ? 'bg-indigo-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800' ?>">
+                    <span>Все типы</span>
+                    <?php if ($typeFilter === 'all'): ?><span>✓</span><?php endif; ?>
+                  </a>
+                  <a href="<?= buildUrl(['type' => 'lecture']) ?>" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition <?= $typeFilter === 'lecture' ? 'bg-indigo-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800' ?>">
+                    <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Лекции</span></span>
+                    <?php if ($typeFilter === 'lecture'): ?><span>✓</span><?php endif; ?>
+                  </a>
+                  <a href="<?= buildUrl(['type' => 'lab']) ?>" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition <?= $typeFilter === 'lab' ? 'bg-indigo-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800' ?>">
+                    <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-purple-500"></span><span>Лабораторные</span></span>
+                    <?php if ($typeFilter === 'lab'): ?><span>✓</span><?php endif; ?>
+                  </a>
+                  <a href="<?= buildUrl(['type' => 'practice']) ?>" class="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition <?= $typeFilter === 'practice' ? 'bg-indigo-600 text-white' : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800' ?>">
+                    <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500"></span><span>Практики</span></span>
+                    <?php if ($typeFilter === 'practice'): ?><span>✓</span><?php endif; ?>
+                  </a>
+                </div>
+              </div>
+            </details>
+
+            <!-- Кнопка "Заметка на день" (ровно один плюс из иконки) -->
+            <a 
+              href="#add-day-note" 
+              class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
+            >
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+              <span>Заметка на день</span>
+            </a>
+          </div>
         </div>
 
         <!-- Блок заметок на этот день -->
@@ -822,7 +850,7 @@ $dayGeneralNotes = array_filter(
               type="text" 
               name="text" 
               required 
-              placeholder="+ Новая заметка на день..." 
+              placeholder="Новая заметка на день..." 
               class="flex-1 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500"
             >
             <button type="submit" class="px-3 py-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition">
