@@ -70,9 +70,16 @@ if ($path === '/manifest.json' && file_exists(__DIR__ . '/manifest.json')) {
     readfile(__DIR__ . '/manifest.json');
     exit;
 }
-if (($path === '/apple-touch-icon.png' || $path === '/apple-touch-icon-precomposed.png' || $path === '/favicon.ico') && file_exists(__DIR__ . '/apple-touch-icon.png')) {
+// Отдача иконки приложения для Apple Touch / PWA / Favicon
+if ((str_starts_with($path, '/apple-touch-icon') || str_starts_with($path, '/favicon')) && file_exists(__DIR__ . '/apple-touch-icon.png')) {
     header("Content-Type: image/png");
-    readfile(__DIR__ . '/apple-touch-icon.png');
+    header("Cache-Control: public, max-age=604800, immutable");
+    $targetFile = __DIR__ . $path;
+    if (file_exists($targetFile) && is_file($targetFile)) {
+        readfile($targetFile);
+    } else {
+        readfile(__DIR__ . '/apple-touch-icon.png');
+    }
     exit;
 }
 
@@ -241,7 +248,11 @@ if ($path === '/api/full-schedule') {
 
   <!-- Иконка приложения для экрана "Домой" на iPhone / iPad -->
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <link rel="icon" type="image/png" href="/apple-touch-icon.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon-180x180.png">
+  <link rel="apple-touch-icon-precomposed" href="/apple-touch-icon-precomposed.png">
+  <link rel="icon" type="image/png" sizes="180x180" href="/apple-touch-icon-180x180.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/apple-touch-icon.png">
+  <link rel="shortcut icon" type="image/png" href="/favicon.png">
   <link rel="manifest" href="/manifest.json">
   
   <!-- Tailwind CSS -->

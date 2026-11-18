@@ -8,14 +8,15 @@
   "description": "Объединённое расписание занятий КГЭУ для групп ПМ-1-24 и ЦК-ИЦС-3",
   "icons": [
     {
-      "src": "/apple-touch-icon.png",
-      "sizes": "192x192",
+      "src": "/apple-touch-icon-180x180.png",
+      "sizes": "180x180",
       "type": "image/png"
     },
     {
       "src": "/apple-touch-icon.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
