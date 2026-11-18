@@ -65,6 +65,16 @@ if ($path === '/app.js' && file_exists(__DIR__ . '/app.js')) {
     readfile(__DIR__ . '/app.js');
     exit;
 }
+if ($path === '/manifest.json' && file_exists(__DIR__ . '/manifest.json')) {
+    header("Content-Type: application/manifest+json; charset=utf-8");
+    readfile(__DIR__ . '/manifest.json');
+    exit;
+}
+if (($path === '/apple-touch-icon.png' || $path === '/apple-touch-icon-precomposed.png' || $path === '/favicon.ico') && file_exists(__DIR__ . '/apple-touch-icon.png')) {
+    header("Content-Type: image/png");
+    readfile(__DIR__ . '/apple-touch-icon.png');
+    exit;
+}
 
 $dataDir = __DIR__ . '/data';
 if (!is_dir($dataDir)) {
@@ -206,8 +216,21 @@ if ($path === '/api/full-schedule') {
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Расписание занятий КГЭУ — ПМ-1-24 и ЦК-ИЦС-3</title>
+  
+  <!-- Apple Web App (PWA) для запуска как отдельное приложение без браузера Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Расписание">
+  <meta name="theme-color" content="#4f46e5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#020617" media="(prefers-color-scheme: dark)">
+
+  <!-- Иконка приложения для экрана "Домой" на iPhone / iPad -->
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
