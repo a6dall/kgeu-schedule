@@ -1,53 +1,19 @@
 /**
  * ==============================================================================
  * КГЭУ Расписание — Клиентская часть на Vue.js 3
+ * Объединённое расписание групп: ПМ-1-24 и ЦК-ИЦС-3
  * ==============================================================================
  * 
  * Архитектура:
- *  - Vue 3 управляет всем интерфейсом реактивно: когда меняются данные (state),
- *    Vue сам моментально обновляет нужные элементы в браузере без перезагрузки страниц (SPA).
- *  - Серверная часть (PHP) поставляет данные через REST API (/api/full-schedule, /api/todo).
+ *  - Vue 3 реактивно управляет отображением без перезагрузок страницы (SPA).
+ *  - Чистый PHP бэкенд отдаёт объединённый поток пар по REST API (/api/full-schedule).
+ *  - Каждая пара размечена бейджем своей группы (ПМ-1-24 или ЦК-ИЦС-3).
  */
 
 const { createApp, ref, computed, onMounted } = Vue;
 
 // ------------------------------------------------------------------------------
-// ХРОНОЛОГИЯ ЛАБОРАТОРНЫХ РАБОТ СЕМЕСТРА (Группа ПМ-1-24)
-// По 1 лабе на сдвоенные пары по расписанию КГЭУ
-// ------------------------------------------------------------------------------
-const SUBJECT_LAB_TIMELINE = {
-  'Исследование операций': {
-    unit: 'Лабораторная работа',
-    dates: ['2026-09-03', '2026-09-16', '2026-09-30', '2026-10-14', '2026-10-28', '2026-11-11', '2026-11-25', '2026-12-09']
-  },
-  'Маркетинг ИТ-продуктов': {
-    unit: 'Лабораторная работа',
-    dates: ['2026-09-10', '2026-09-24', '2026-10-08', '2026-10-22', '2026-11-05', '2026-11-19', '2026-12-03', '2026-12-17']
-  },
-  'Сетевое планирование и управление ИТ-проектами': {
-    unit: 'Лабораторная работа',
-    dates: ['2026-09-11', '2026-09-25', '2026-10-09', '2026-10-23', '2026-11-06', '2026-11-20', '2026-12-04', '2026-12-18']
-  },
-  'Интерфейс программных продуктов': {
-    unit: 'Лабораторная работа',
-    dates: ['2026-09-12', '2026-09-26', '2026-10-10', '2026-10-24', '2026-11-07', '2026-11-21', '2026-12-05', '2026-12-19']
-  },
-  'Web-программирование': {
-    unit: 'Лабораторная работа',
-    dates: ['2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10', '2026-11-24', '2026-12-08']
-  },
-  'Статистика': {
-    unit: 'Лабораторная работа',
-    dates: ['2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10', '2026-11-24', '2026-12-08']
-  },
-  'Оценка эффективности ИТ-проектов': {
-    unit: 'Кейс',
-    dates: ['2026-09-18', '2026-10-02', '2026-10-16', '2026-10-30', '2026-11-13', '2026-11-27', '2026-12-11']
-  }
-};
-
-// ------------------------------------------------------------------------------
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И УТИЛИТЫ ДАТ/СТРОК
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И УТИЛИТЫ ДАТ И СТРОК
 // ------------------------------------------------------------------------------
 
 /** Текущая дата в формате YYYY-MM-DD */
@@ -82,12 +48,6 @@ function formatCustomWeekTitle(startDateStr, endDateStr) {
   const mm2 = String(d2.getMonth() + 1).padStart(2, '0');
   const yyyy2 = d2.getFullYear();
   return `Вся неделя — ${dd1}.${mm1} – ${dd2}.${mm2}.${yyyy2}`;
-}
-
-/** Очистка названий задач от устаревшего префикса "TODO:" */
-function cleanTaskTitle(title) {
-  if (!title) return '';
-  return String(title).replace(/^\s*TODO:\s*/iu, '').trim();
 }
 
 /**
@@ -151,15 +111,16 @@ function parseDiscipline(rawName) {
 /** Уникальный ключ для идентификации пары в расписании */
 function getPairKey(item) {
   if (!item) return '';
+  const g = item.groupId || item.groupName || '';
   const dateStr = item.дата ? item.дата.split('T')[0] : '';
   const num = item.номерЗанятия || '';
   const time = (item.начало || '').trim();
   const sub = item.номерПодгруппы || 0;
   const disc = (item.дисциплина || '').trim().toLowerCase();
-  return `${dateStr}_${num}_${time}_${sub}_${disc}`;
+  return `${g}_${dateStr}_${num}_${time}_${sub}_${disc}`;
 }
 
-/** Возвращает массив из 7 дат (Пн..Вс) недели для указанной даты */
+/** Возвращает массив из 7 дат недели (Пн..Вс) для указанной даты */
 function getWeekDates(targetDateStr) {
   if (!targetDateStr) return [];
   const target = new Date(targetDateStr);
@@ -197,9 +158,16 @@ createApp({
     // --------------------------------------------------------------------------
     // 1. РЕАКТИВНОЕ СОСТОЯНИЕ (STATE)
     // --------------------------------------------------------------------------
-    
-    // Текущая группа студентов КГЭУ (14493 = ПМ-1-24)
-    const groupId = ref(14493);
+
+    // Список отслеживаемых групп КГЭУ
+    const groupsList = ref([
+      { id: 'all', name: 'Все группы' },
+      { id: '14493', name: 'ПМ-1-24', badgeClass: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30' },
+      { id: '15006', name: 'ЦК-ИЦС-3', badgeClass: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30' }
+    ]);
+
+    // Активный фильтр по группе: 'all' (обе группы вместе) | '14493' | '15006'
+    const activeGroupFilter = ref('all');
 
     // Выбранная дата в формате YYYY-MM-DD (по умолчанию — сегодня)
     const selectedDate = ref(getTodayDateStr());
@@ -216,9 +184,6 @@ createApp({
     // База пар расписания, сгруппированная по датам: { 'YYYY-MM-DD': [пара1, пара2] }
     const allPairsMap = ref({});
 
-    // Общая информация о группе и семестре от API КГЭУ
-    const scheduleInfo = ref(null);
-
     // Статус синхронизации и время последнего обновления
     const isSyncing = ref(false);
     const syncTimeText = ref('Загрузка...');
@@ -226,28 +191,8 @@ createApp({
     // Флаг тёмной темы оформления
     const isDark = ref(false);
 
-    // Открыта ли плашка с фильтрами
+    // Открыта ли плашка с фильтрами по типам пар
     const isFiltersOpen = ref(false);
-
-    // Состояние заметок и чекбоксов (синхронизируется с сервером PHP в todo_state.json)
-    const todoData = ref({
-      checkboxes: {},     // { 'ИмяПредмета_номерЛабы': true/false }
-      customNotes: [],    // [ { id, pairKey, date, text, completed } ]
-      editedDefaults: {}, // { 'ИмяПредмета_номерЛабы': 'Своё название' }
-      deletedDefaults: [] // [ 'ИмяПредмета_номерЛабы' ]
-    });
-
-    // Состояние модального окна добавления/редактирования заметок
-    const modal = ref({
-      isOpen: false,
-      title: 'Заметка / задача',
-      mode: 'add',        // 'add' | 'edit'
-      targetType: 'pair', // 'pair' | 'day' | 'default_lab'
-      id: '',
-      pairKey: '',
-      date: '',
-      text: ''
-    });
 
     // --------------------------------------------------------------------------
     // 2. ВЫЧИСЛЯЕМЫЕ СВОЙСТВА (COMPUTED)
@@ -307,7 +252,12 @@ createApp({
       // Числа месяца
       for (let d = 1; d <= totalDays; d++) {
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-        const pairs = allPairsMap.value[dateStr] || [];
+        let pairs = allPairsMap.value[dateStr] || [];
+
+        // Если активен фильтр по конкретной группе — учитываем его в календаре
+        if (activeGroupFilter.value !== 'all') {
+          pairs = pairs.filter(p => String(p.groupId) === String(activeGroupFilter.value));
+        }
 
         // Собираем типы занятий для цветных точек
         const typeSet = new Set();
@@ -333,7 +283,7 @@ createApp({
       return days;
     });
 
-    // Список пар, отфильтрованный по выбранной дате/неделе и типу
+    // Список пар, отфильтрованный по выбранной дате/неделе, группе и типу
     const displayedPairs = computed(() => {
       let rawPairs = [];
 
@@ -345,6 +295,11 @@ createApp({
           const p = allPairsMap.value[d] || [];
           rawPairs.push(...p);
         });
+      }
+
+      // Фильтрация по группе (ПМ-1-24 или ЦК-ИЦС-3)
+      if (activeGroupFilter.value !== 'all') {
+        rawPairs = rawPairs.filter(p => String(p.groupId) === String(activeGroupFilter.value));
       }
 
       // Дедупликация одинаковых записей пар
@@ -371,14 +326,6 @@ createApp({
       });
 
       return list;
-    });
-
-    // Заметки на выбранный день (общие, не привязанные к конкретной паре)
-    const dayGeneralNotes = computed(() => {
-      if (currentViewMode.value !== 'day') return [];
-      return (todoData.value?.customNotes || []).filter(
-        n => n.date === selectedDate.value && !n.pairKey
-      );
     });
 
     // --------------------------------------------------------------------------
@@ -421,7 +368,12 @@ createApp({
       calendarMonth.value = new Date();
     }
 
-    // Открытие/закрытие выпадающей плашки фильтров
+    // Переключение активной группы (Все / ПМ-1-24 / ЦК-ИЦС-3)
+    function selectGroupFilter(groupId) {
+      activeGroupFilter.value = String(groupId);
+    }
+
+    // Открытие/закрытие выпадающей плашки фильтров по типу пар
     function toggleFiltersDropdown() {
       isFiltersOpen.value = !isFiltersOpen.value;
     }
@@ -444,227 +396,49 @@ createApp({
       }
     }
 
-    // Переключение чекбокса стандартной лабораторной
-    function toggleTodoCheckbox(key, isChecked) {
-      if (!todoData.value.checkboxes) todoData.value.checkboxes = {};
-      todoData.value.checkboxes[key] = isChecked;
-      saveTodoDataOnServer();
-    }
-
-    // Переключение чекбокса кастомной заметки
-    function toggleCustomNoteCheckbox(id, isChecked) {
-      const note = (todoData.value.customNotes || []).find(n => n.id === id);
-      if (note) {
-        note.completed = isChecked;
-        saveTodoDataOnServer();
-      }
-    }
-
-    // Удаление кастомной заметки
-    function deleteCustomNote(id) {
-      if (!confirm('Удалить эту задачу?')) return;
-      todoData.value.customNotes = (todoData.value.customNotes || []).filter(n => n.id !== id);
-      saveTodoDataOnServer();
-    }
-
-    // Удаление стандартной лабы из списка (добавление в deletedDefaults)
-    function deleteDefaultLab(todoKey) {
-      if (!confirm('Удалить эту лабораторную из списка?')) return;
-      if (!todoData.value.deletedDefaults) todoData.value.deletedDefaults = [];
-      if (!todoData.value.deletedDefaults.includes(todoKey)) {
-        todoData.value.deletedDefaults.push(todoKey);
-      }
-      saveTodoDataOnServer();
-    }
-
-    // Открытие модалки добавления задачи к конкретной паре
-    function openAddPairNoteModal(pairKey, pairDate) {
-      modal.value = {
-        isOpen: true,
-        title: 'Новая задача к паре',
-        mode: 'add',
-        targetType: 'pair',
-        id: '',
-        pairKey: pairKey,
-        date: pairDate || selectedDate.value,
-        text: ''
-      };
-    }
-
-    // Открытие модалки добавления общей заметки на день
-    function openAddDayNoteModal() {
-      modal.value = {
-        isOpen: true,
-        title: 'Новая заметка на день',
-        mode: 'add',
-        targetType: 'day',
-        id: '',
-        pairKey: '',
-        date: selectedDate.value,
-        text: ''
-      };
-    }
-
-    // Открытие модалки редактирования кастомной заметки
-    function openEditCustomNoteModal(task) {
-      modal.value = {
-        isOpen: true,
-        title: 'Редактировать задачу',
-        mode: 'edit',
-        targetType: 'custom',
-        id: task.id,
-        pairKey: task.pairKey || '',
-        date: task.date || selectedDate.value,
-        text: cleanTaskTitle(task.text)
-      };
-    }
-
-    // Открытие модалки редактирования стандартной лабораторной
-    function openEditDefaultLabModal(todoKey, defaultText) {
-      const current = todoData.value.editedDefaults?.[todoKey] || defaultText;
-      modal.value = {
-        isOpen: true,
-        title: 'Переименовать лабораторную',
-        mode: 'edit',
-        targetType: 'default_lab',
-        id: todoKey,
-        pairKey: '',
-        date: '',
-        text: cleanTaskTitle(current)
-      };
-    }
-
-    // Закрытие модального окна
-    function closeModal() {
-      modal.value.isOpen = false;
-      modal.value.text = '';
-    }
-
-    // Сохранение данных из модального окна
-    function handleModalSubmit() {
-      const text = cleanTaskTitle(modal.value.text);
-      if (!text) return;
-
-      if (modal.value.mode === 'add') {
-        const newNote = {
-          id: 'note_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-          pairKey: modal.value.targetType === 'pair' ? modal.value.pairKey : null,
-          date: modal.value.date || selectedDate.value,
-          text: text,
-          completed: false
-        };
-        if (!todoData.value.customNotes) todoData.value.customNotes = [];
-        todoData.value.customNotes.push(newNote);
-      } else if (modal.value.mode === 'edit') {
-        if (modal.value.targetType === 'custom') {
-          const note = (todoData.value.customNotes || []).find(n => n.id === modal.value.id);
-          if (note) note.text = text;
-        } else if (modal.value.targetType === 'default_lab') {
-          if (!todoData.value.editedDefaults) todoData.value.editedDefaults = {};
-          todoData.value.editedDefaults[modal.value.id] = text;
-        }
-      }
-
-      saveTodoDataOnServer();
-      closeModal();
-    }
-
-    // Быстрое добавление инлайн-заметки на день
-    function addQuickDayNote(event) {
-      const input = event.target.elements.quickText;
-      const val = cleanTaskTitle(input.value);
-      if (!val) return;
-
-      if (!todoData.value.customNotes) todoData.value.customNotes = [];
-      todoData.value.customNotes.push({
-        id: 'note_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
-        pairKey: null,
-        date: selectedDate.value,
-        text: val,
-        completed: false
-      });
-      input.value = '';
-      saveTodoDataOnServer();
-    }
-
     // --------------------------------------------------------------------------
     // 4. СВЯЗЬ С PHP-БЭКЕНДОМ ЧЕРЕЗ API
     // --------------------------------------------------------------------------
 
-    // Загрузка состояния заметок с сервера PHP
-    async function loadTodoDataFromServer() {
-      const cached = localStorage.getItem('kgeu_todo_data_v4');
-      if (cached) {
-        try {
-          todoData.value = JSON.parse(cached);
-        } catch {}
-      }
-
-      try {
-        const res = await fetch('/api/todo');
-        if (res.ok) {
-          const data = await res.json();
-          if (data && typeof data === 'object') {
-            todoData.value = {
-              checkboxes: data.checkboxes || {},
-              customNotes: data.customNotes || [],
-              editedDefaults: data.editedDefaults || {},
-              deletedDefaults: data.deletedDefaults || []
-            };
-            localStorage.setItem('kgeu_todo_data_v4', JSON.stringify(todoData.value));
-          }
-        }
-      } catch (e) {
-        console.warn('Ошибка загрузки заметок:', e);
-      }
-    }
-
-    // Фоновое сохранение заметок на PHP-сервер
-    async function saveTodoDataOnServer() {
-      localStorage.setItem('kgeu_todo_data_v4', JSON.stringify(todoData.value));
-      try {
-        await fetch('/api/todo', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(todoData.value)
-        });
-      } catch (e) {
-        console.warn('Ошибка сохранения заметок на сервер:', e);
-      }
-    }
-
-    // Загрузка полного расписания на весь семестр
+    // Загрузка расписания обеих групп
     async function loadSchedule() {
       isSyncing.value = true;
 
-      // 1. Быстро читаем локальный кэш
-      const localCandidates = [
-        `./data/schedule_semester_${groupId.value}.json`,
-        './data/schedule_semester_cache.json',
-        './data/schedule_sample.json'
-      ];
-      for (const p of localCandidates) {
-        try {
-          const res = await fetch(p);
-          if (res.ok) {
-            const data = await res.json();
-            if (data?.data?.rasp) {
-              applyScheduleItems(data.data.rasp);
-              if (data.data.info) scheduleInfo.value = data.data.info;
-              break;
-            }
-          }
-        } catch {}
+      // Сначала пробуем быстро прочитать локальные кэши обеих групп
+      try {
+        const [c14493, c15006] = await Promise.allSettled([
+          fetch('./data/schedule_semester_14493.json').then(r => r.ok ? r.json() : null),
+          fetch('./data/schedule_semester_15006.json').then(r => r.ok ? r.json() : null)
+        ]);
+        const cachedPairs = [];
+        if (c14493.status === 'fulfilled' && c14493.value?.data?.rasp) {
+          c14493.value.data.rasp.forEach(p => {
+            p.groupId = 14493;
+            p.groupName = 'ПМ-1-24';
+            cachedPairs.push(p);
+          });
+        }
+        if (c15006.status === 'fulfilled' && c15006.value?.data?.rasp) {
+          c15006.value.data.rasp.forEach(p => {
+            p.groupId = 15006;
+            p.groupName = 'ЦК-ИЦС-3';
+            cachedPairs.push(p);
+          });
+        }
+        if (cachedPairs.length > 0) {
+          applyScheduleItems(cachedPairs);
+        }
+      } catch (e) {
+        console.warn('Локальный кэш:', e);
       }
 
-      // 2. Получаем свежее расписание от PHP сервера (/api/full-schedule)
+      // Получаем объединенные данные от PHP сервера (/api/full-schedule)
       try {
-        const res = await fetch(`/api/full-schedule?idGroup=${groupId.value}`);
+        const res = await fetch('/api/full-schedule?idGroup=all');
         if (res.ok) {
           const fullData = await res.json();
           if (fullData?.data?.rasp) {
             applyScheduleItems(fullData.data.rasp);
-            if (fullData.data.info) scheduleInfo.value = fullData.data.info;
           }
         }
       } catch (e) {
@@ -680,12 +454,11 @@ createApp({
     async function manualRefresh() {
       isSyncing.value = true;
       try {
-        const res = await fetch(`/api/full-schedule?idGroup=${groupId.value}&refresh=1`);
+        const res = await fetch('/api/full-schedule?idGroup=all&refresh=1');
         if (res.ok) {
           const data = await res.json();
           if (data?.data?.rasp) {
             applyScheduleItems(data.data.rasp);
-            if (data.data.info) scheduleInfo.value = data.data.info;
           }
         }
       } catch (e) {
@@ -711,84 +484,7 @@ createApp({
     }
 
     // --------------------------------------------------------------------------
-    // 5. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ КАРТОЧЕК
-    // --------------------------------------------------------------------------
-
-    /** Информация о лабораторной работе для карточки пары */
-    function getLabInfo(subjectOrPair, maybeDateStr) {
-      let subjectTitle = '';
-      let dateStr = '';
-      if (typeof subjectOrPair === 'object' && subjectOrPair !== null) {
-        const disc = parseDiscipline(subjectOrPair.дисциплина);
-        if (disc.typeKey !== 'lab') return null;
-        subjectTitle = disc.title;
-        dateStr = subjectOrPair.дата ? subjectOrPair.дата.split('T')[0] : selectedDate.value;
-      } else {
-        subjectTitle = subjectOrPair || '';
-        dateStr = maybeDateStr || selectedDate.value;
-      }
-
-      if (!subjectTitle) return null;
-
-      let matched = null;
-      const cleanTitle = subjectTitle.toLowerCase();
-
-      for (const k of Object.keys(SUBJECT_LAB_TIMELINE)) {
-        const kLow = k.toLowerCase();
-        if (cleanTitle.includes(kLow) || kLow.includes(cleanTitle)) {
-          matched = k;
-          break;
-        }
-        if (cleanTitle.includes('сетевое') && kLow.includes('сетевое')) { matched = k; break; }
-        if (cleanTitle.includes('маркетинг') && kLow.includes('маркетинг')) { matched = k; break; }
-        if (cleanTitle.includes('интерфейс') && kLow.includes('интерфейс')) { matched = k; break; }
-        if (cleanTitle.includes('web') && kLow.includes('web')) { matched = k; break; }
-        if (cleanTitle.includes('оценка') && kLow.includes('оценка')) { matched = k; break; }
-        if (cleanTitle.includes('исследование') && kLow.includes('исследование')) { matched = k; break; }
-        if (cleanTitle.includes('статистик') && kLow.includes('статистик')) { matched = k; break; }
-      }
-
-      if (!matched) return null;
-
-      const conf = SUBJECT_LAB_TIMELINE[matched];
-      const dates = conf.dates || [];
-      const unit = conf.unit || 'Лабораторная работа';
-
-      let labNum = 1;
-      const idx = dates.indexOf(dateStr);
-      if (idx >= 0) {
-        labNum = idx + 1;
-      } else {
-        let count = 0;
-        for (const d of dates) {
-          if (d <= dateStr) count++;
-        }
-        labNum = count > 0 ? count : 1;
-      }
-
-      const todoKey = `${matched}_${labNum}`;
-      const isChecked = !!(todoData.value.checkboxes && todoData.value.checkboxes[todoKey]);
-      const customTitle = todoData.value.editedDefaults?.[todoKey];
-
-      // Полное отсутствие префикса TODO:
-      const label = cleanTaskTitle(customTitle || `${unit} №${labNum}`);
-
-      return {
-        todoKey,
-        label,
-        isChecked,
-        isDeleted: (todoData.value.deletedDefaults || []).includes(todoKey)
-      };
-    }
-
-    /** Получение кастомных задач, привязанных к конкретной паре */
-    function getCustomTasksForPair(item) {
-      const key = getPairKey(item);
-      return (todoData.value.customNotes || []).filter(n => n.pairKey === key);
-    }
-
-    // --------------------------------------------------------------------------
-    // 6. ИНИЦИАЛИЗАЦИЯ ПРИ ЗАПУСКЕ (MOUNTED)
+    // 5. ИНИЦИАЛИЗАЦИЯ ПРИ ЗАПУСКЕ (MOUNTED)
     // --------------------------------------------------------------------------
     onMounted(() => {
       // Восстанавливаем тему (Dark / Light)
@@ -809,16 +505,16 @@ createApp({
         }
       });
 
-      // Загружаем заметки и расписание
-      loadTodoDataFromServer();
+      // Загружаем объединенное расписание
       loadSchedule();
     });
 
     // --------------------------------------------------------------------------
-    // 7. ВОЗВРАТ ПЕРЕМЕННЫХ И МЕТОДОВ В ШАБЛОН HTML
+    // 6. ВОЗВРАТ ПЕРЕМЕННЫХ И МЕТОДОВ В ШАБЛОН HTML
     // --------------------------------------------------------------------------
     return {
-      groupId,
+      groupsList,
+      activeGroupFilter,
       selectedDate,
       currentViewMode,
       activeTypeFilter,
@@ -828,37 +524,22 @@ createApp({
       currentViewTitle,
       currentFilterLabel,
       displayedPairs,
-      dayGeneralNotes,
       isSyncing,
       syncTimeText,
       isDark,
       isFiltersOpen,
-      modal,
       selectCalendarDate,
       toggleWeekView,
       prevMonth,
       nextMonth,
       resetToToday,
+      selectGroupFilter,
       toggleFiltersDropdown,
       selectFilter,
       toggleTheme,
-      toggleTodoCheckbox,
-      toggleCustomNoteCheckbox,
-      deleteCustomNote,
-      deleteDefaultLab,
-      openAddPairNoteModal,
-      openAddDayNoteModal,
-      openEditCustomNoteModal,
-      openEditDefaultLabModal,
-      closeModal,
-      handleModalSubmit,
-      addQuickDayNote,
       manualRefresh,
       parseDiscipline,
       isPairCurrent,
-      getLabInfo,
-      getCustomTasksForPair,
-      cleanTaskTitle,
       getPairKey
     };
   }

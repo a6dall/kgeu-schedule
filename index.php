@@ -2,16 +2,16 @@
 /**
  * ==============================================================================
  * КГЭУ Расписание — Бэкенд на чистом PHP + Шаблон Vue.js 3
+ * Объединённое расписание групп: ПМ-1-24 (14493) и ЦК-ИЦС-3 (15006)
  * ==============================================================================
  * 
  * Назначение этого файла:
  *  1. Запуск встроенного веб-сервера PHP при вызове `php index.php` (для Mac и Docker).
- *  2. Раздача статики (стили style.css, клиентский код app.js).
- *  3. REST API эндпоинты для фронтенда:
- *     - GET  /api/full-schedule : скачивает и кэширует всё расписание семестра через cURL
- *     - GET  /api/todo          : отдаёт сохраненные заметки и статус чекбоксов
- *     - POST /api/todo          : сохраняет заметки в data/todo_state.json
- *  4. Отдача HTML-разметки с реактивными директивами Vue.js 3 (v-for, v-if, @click).
+ *  2. Раздача статики (стили style.css, клиентский код app.js) с cache-busting.
+ *  3. REST API эндпоинт /api/full-schedule:
+ *     - Скачивает и кэширует расписание обеих групп (ПМ-1-24 + ЦК-ИЦС-3) с kabinet.kgeu.ru.
+ *     - Объединяет пары в единый хронологический поток с маркировкой группы.
+ *  4. Отдача адаптивной HTML-разметки на Vue.js 3.
  */
 
 declare(strict_types=1);
@@ -26,7 +26,7 @@ if (php_sapi_name() === 'cli') {
     $url = "http://{$host}:{$port}";
 
     echo "\033[1;32m========================================================\033[0m\n";
-    echo "\033[1;36m🎓 Сервер расписания КГЭУ (Чистый PHP + Vue.js 3)\033[0m\n";
+    echo "\033[1;36m🎓 Сервер расписания КГЭУ (ПМ-1-24 + ЦК-ИЦС-3)\033[0m\n";
     echo "⚡ Адрес приложения: {$url}\n";
     echo "🔄 API проксирование kabinet.kgeu.ru активно\n";
     echo "❌ Для остановки нажмите Ctrl + C\n";
@@ -81,208 +81,138 @@ $dataDir = __DIR__ . '/data';
 if (!is_dir($dataDir)) {
     @mkdir($dataDir, 0755, true);
 }
-$todoFile = $dataDir . '/todo_state.json';
 $kgeuApiHost = 'https://kabinet.kgeu.ru';
 
 // ------------------------------------------------------------------------------
-// 3. REST API ДЛЯ ЗАМЕТОК И ЧЕКБОКСОВ (/api/todo)
-// ------------------------------------------------------------------------------
-if ($path === '/api/todo' || $path === '/api/todo-state') {
-    header("Content-Type: application/json; charset=utf-8");
-
-    // GET /api/todo: отдаёт текущее сохраненное состояние заметок и чекбоксов
-    if ($method === 'GET') {
-        $state = [
-            'checkboxes' => [],
-            'customNotes' => [],
-            'editedDefaults' => [],
-            'deletedDefaults' => []
-        ];
-
-        if (file_exists($todoFile)) {
-            $raw = file_get_contents($todoFile);
-            $parsed = json_decode($raw ?: '', true);
-            if (is_array($parsed)) {
-                if (isset($parsed['checkboxes']) || isset($parsed['customNotes'])) {
-                    $state['checkboxes'] = $parsed['checkboxes'] ?? [];
-                    $state['customNotes'] = $parsed['customNotes'] ?? [];
-                    $state['editedDefaults'] = $parsed['editedDefaults'] ?? [];
-                    $state['deletedDefaults'] = $parsed['deletedDefaults'] ?? [];
-                } else {
-                    foreach ($parsed as $k => $v) {
-                        $state['checkboxes'][$k] = (bool)$v;
-                    }
-                }
-            }
-        }
-
-        echo json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        exit;
-    }
-
-    // POST /api/todo: сохраняет изменения от Vue.js в файл data/todo_state.json
-    if ($method === 'POST') {
-        $rawBody = file_get_contents('php://input');
-        $input = json_decode($rawBody, true);
-
-        if (!is_array($input)) {
-            http_response_code(400);
-            echo json_encode(['error' => 'Неверный JSON'], JSON_UNESCAPED_UNICODE);
-            exit;
-        }
-
-        $current = [
-            'checkboxes' => [],
-            'customNotes' => [],
-            'editedDefaults' => [],
-            'deletedDefaults' => []
-        ];
-
-        if (file_exists($todoFile)) {
-            $raw = file_get_contents($todoFile);
-            $parsed = json_decode($raw ?: '', true);
-            if (is_array($parsed)) {
-                $current['checkboxes'] = $parsed['checkboxes'] ?? [];
-                $current['customNotes'] = $parsed['customNotes'] ?? [];
-                $current['editedDefaults'] = $parsed['editedDefaults'] ?? [];
-                $current['deletedDefaults'] = $parsed['deletedDefaults'] ?? [];
-            }
-        }
-
-        if (isset($input['checkboxes'])) {
-            $current['checkboxes'] = array_merge($current['checkboxes'], (array)$input['checkboxes']);
-        }
-        if (isset($input['customNotes'])) {
-            $current['customNotes'] = array_values((array)$input['customNotes']);
-        }
-        if (isset($input['editedDefaults'])) {
-            $current['editedDefaults'] = array_merge($current['editedDefaults'], (array)$input['editedDefaults']);
-        }
-        if (isset($input['deletedDefaults'])) {
-            $current['deletedDefaults'] = array_values(array_unique((array)$input['deletedDefaults']));
-        }
-
-        file_put_contents(
-            $todoFile,
-            json_encode($current, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
-        );
-
-        echo json_encode(['status' => 'ok']);
-        exit;
-    }
-}
-
-// ------------------------------------------------------------------------------
-// 4. REST API ДЛЯ СКАЧИВАНИЯ ВСЕГО СЕМЕСТРА КГЭУ (/api/full-schedule)
+// 3. REST API ДЛЯ СКАЧИВАНИЯ СЕМЕСТРА КГЭУ (/api/full-schedule)
+// Объединяет расписание групп: ПМ-1-24 (14493) и ЦК-ИЦС-3 (15006)
 // ------------------------------------------------------------------------------
 if ($path === '/api/full-schedule') {
     header("Content-Type: application/json; charset=utf-8");
     parse_str($queryString, $queryParams);
-    $idGroup = (int)($queryParams['idGroup'] ?? 14493);
     $forceRefresh = isset($queryParams['refresh']) && ($queryParams['refresh'] === '1' || $queryParams['refresh'] === 'true');
-    $semesterCacheFile = $dataDir . "/schedule_semester_{$idGroup}.json";
+    $requestedGroup = $queryParams['idGroup'] ?? 'all';
 
-    // Если есть свежий кэш (до 24 часов) и не запрошено принудительное обновление — отдаем мгновенно
-    if (!$forceRefresh && file_exists($semesterCacheFile) && (time() - filemtime($semesterCacheFile) < 86400)) {
-        $cached = file_get_contents($semesterCacheFile);
-        if ($cached !== false && strlen($cached) > 200) {
-            echo $cached;
-            exit;
-        }
+    $groupsConfig = [
+        14493 => 'ПМ-1-24',
+        15006 => 'ЦК-ИЦС-3'
+    ];
+
+    $mondays = [
+        "2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28",
+        "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26", "2026-11-02",
+        "2026-11-09", "2026-11-16", "2026-11-23", "2026-11-30", "2026-12-07",
+        "2026-12-14", "2026-12-21", "2026-12-28"
+    ];
+
+    $targetGroupIds = [];
+    if ($requestedGroup === 'all' || !isset($groupsConfig[(int)$requestedGroup])) {
+        $targetGroupIds = array_keys($groupsConfig);
+    } else {
+        $targetGroupIds = [(int)$requestedGroup];
     }
 
-    // Собираем расписание всех недель семестра с kabinet.kgeu.ru параллельно через curl_multi
-    try {
-        $datesUrl = "{$kgeuApiHost}/api/GetRaspDates?idGroup={$idGroup}";
-        $ch = curl_init();
-        curl_setopt($ch, CURLOPT_URL, $datesUrl);
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ["User-Agent: Mozilla/5.0", "Accept: application/json"]);
-        curl_setopt($ch, CURLOPT_TIMEOUT, 6);
-        $datesResp = curl_exec($ch);
-        $datesData = json_decode($datesResp ?: '', true)["data"]["dates"] ?? [];
+    $combinedPairs = [];
+    $allGroupsMeta = [];
 
-        // Вычисляем даты всех понедельников учебного года
-        $mondays = [];
-        foreach ($datesData as $d) {
-            $ts = strtotime($d);
-            $monday = date("Y-m-d", strtotime("monday this week", $ts));
-            $mondays[$monday] = true;
-        }
-        $mondays = array_keys($mondays);
-        sort($mondays);
+    foreach ($targetGroupIds as $gId) {
+        $gName = $groupsConfig[$gId];
+        $allGroupsMeta[] = ['id' => $gId, 'name' => $gName];
+        $cacheFile = $dataDir . "/schedule_semester_{$gId}.json";
 
-        if (empty($mondays)) {
-            $mondays = [
-                "2026-08-31", "2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28",
-                "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26", "2026-11-02",
-                "2026-11-09", "2026-11-16", "2026-11-23", "2026-11-30", "2026-12-07",
-                "2026-12-14", "2026-12-21", "2026-12-28"
-            ];
-        }
-
-        // Запуск параллельной выгрузки 18 недель за 0.3 секунды
-        $mh = curl_multi_init();
-        $handles = [];
-        foreach ($mondays as $m) {
-            $c = curl_init("{$kgeuApiHost}/api/Rasp?idGroup={$idGroup}&sdate={$m}");
-            curl_setopt($c, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($c, CURLOPT_HTTPHEADER, ["User-Agent: Mozilla/5.0", "Accept: application/json"]);
-            curl_setopt($c, CURLOPT_TIMEOUT, 10);
-            curl_multi_add_handle($mh, $c);
-            $handles[$m] = $c;
-        }
-
-        $running = null;
-        do {
-            curl_multi_exec($mh, $running);
-            curl_multi_select($mh);
-        } while ($running > 0);
-
-        $allItems = [];
-        $info = null;
-        foreach ($handles as $m => $c) {
-            $content = curl_multi_getcontent($c);
-            $parsed = json_decode($content ?: '', true);
-            if (isset($parsed["data"]["rasp"])) {
-                foreach ($parsed["data"]["rasp"] as $item) {
-                    $itemCode = $item["код"] ?? (getrandmax() . '_' . microtime(true));
-                    $allItems[$itemCode] = $item;
+        $loadedFromCache = false;
+        if (!$forceRefresh && file_exists($cacheFile) && (time() - filemtime($cacheFile) < 86400)) {
+            $cachedContent = file_get_contents($cacheFile);
+            $parsed = json_decode($cachedContent ?: '', true);
+            if (!empty($parsed['data']['rasp'])) {
+                foreach ($parsed['data']['rasp'] as $item) {
+                    $item['groupId'] = $gId;
+                    $item['groupName'] = $gName;
+                    $combinedPairs[] = $item;
                 }
+                $loadedFromCache = true;
             }
-            if (!$info && isset($parsed["data"]["info"])) {
-                $info = $parsed["data"]["info"];
+        }
+
+        if (!$loadedFromCache) {
+            // Быстрое параллельное скачивание всех 18 недель через curl_multi
+            $mh = curl_multi_init();
+            $handles = [];
+            foreach ($mondays as $m) {
+                $c = curl_init("{$kgeuApiHost}/api/Rasp?idGroup={$gId}&sdate={$m}");
+                curl_setopt($c, CURLOPT_RETURNTRANSFER, true);
+                curl_setopt($c, CURLOPT_HTTPHEADER, ["User-Agent: Mozilla/5.0", "Accept: application/json"]);
+                curl_setopt($c, CURLOPT_TIMEOUT, 10);
+                curl_multi_add_handle($mh, $c);
+                $handles[$m] = $c;
             }
-            curl_multi_remove_handle($mh, $c);
-        }
-        curl_multi_close($mh);
 
-        $output = [
-            "data" => [
-                "info" => $info,
-                "rasp" => array_values($allItems),
-                "totalWeeks" => count($mondays),
-                "cachedAt" => date("c")
-            ]
-        ];
+            $running = null;
+            do {
+                curl_multi_exec($mh, $running);
+                curl_multi_select($mh);
+            } while ($running > 0);
 
-        $encoded = json_encode($output, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        file_put_contents($semesterCacheFile, $encoded);
-        echo $encoded;
-        exit;
-    } catch (\Throwable $e) {
-        if (file_exists($semesterCacheFile)) {
-            echo file_get_contents($semesterCacheFile);
-            exit;
+            $groupItems = [];
+            $info = null;
+            foreach ($handles as $m => $c) {
+                $content = curl_multi_getcontent($c);
+                $parsed = json_decode($content ?: '', true);
+                if (isset($parsed["data"]["rasp"])) {
+                    foreach ($parsed["data"]["rasp"] as $item) {
+                        $item["groupId"] = $gId;
+                        $item["groupName"] = $gName;
+                        $itemCode = $item["код"] ?? (getrandmax() . "_" . microtime(true));
+                        $groupItems[$itemCode] = $item;
+                    }
+                }
+                if ($info === null && isset($parsed["data"]["info"])) {
+                    $info = $parsed["data"]["info"];
+                }
+                curl_multi_remove_handle($mh, $c);
+            }
+            curl_multi_close($mh);
+
+            $raspList = array_values($groupItems);
+            $cacheData = [
+                "state" => 1,
+                "msg" => "OK",
+                "data" => [
+                    "info" => $info,
+                    "group" => $gName,
+                    "groupId" => $gId,
+                    "rasp" => $raspList
+                ]
+            ];
+            file_put_contents($cacheFile, json_encode($cacheData, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            $combinedPairs = array_merge($combinedPairs, $raspList);
         }
-        http_response_code(500);
-        echo json_encode(["error" => $e->getMessage()]);
-        exit;
     }
+
+    // Сортировка всех пар по дате и времени начала
+    usort($combinedPairs, function($a, $b) {
+        $d = strcmp($a['дата'] ?? '', $b['дата'] ?? '');
+        if ($d !== 0) return $d;
+        return strcmp($a['начало'] ?? '', $b['начало'] ?? '');
+    });
+
+    $response = [
+        "state" => 1,
+        "msg" => "OK",
+        "data" => [
+            "groups" => $allGroupsMeta,
+            "rasp" => $combinedPairs,
+            "totalPairs" => count($combinedPairs),
+            "cachedAt" => date("c")
+        ]
+    ];
+
+    echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    exit;
 }
 
 // ------------------------------------------------------------------------------
-// 5. РАЗМЕТКА VUE.JS 3 ПРИЛОЖЕНИЯ
+// 4. РАЗМЕТКА VUE.JS 3 ПРИЛОЖЕНИЯ
 // ------------------------------------------------------------------------------
 ?>
 <!DOCTYPE html>
@@ -290,7 +220,7 @@ if ($path === '/api/full-schedule') {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Расписание занятий КГЭУ</title>
+  <title>Расписание занятий КГЭУ — ПМ-1-24 и ЦК-ИЦС-3</title>
   
   <!-- Tailwind CSS для красивого адаптивного оформления -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -324,15 +254,23 @@ if ($path === '/api/full-schedule') {
     <header class="app-header bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-sm">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
         
-        <div>
+        <div class="flex items-center gap-2.5">
           <h1 class="text-base font-extrabold text-slate-900 dark:text-white leading-none tracking-tight">
-            Расписание КГЭУ <span class="text-xs font-semibold text-indigo-500 font-mono">(Vue + PHP)</span>
+            Расписание КГЭУ
           </h1>
+          <div class="flex items-center gap-1.5">
+            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+              ПМ-1-24
+            </span>
+            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+              ЦК-ИЦС-3
+            </span>
+          </div>
         </div>
 
         <div class="flex items-center gap-3">
           <!-- Статус обновления -->
-          <span class="text-xs text-slate-500 dark:text-slate-400 font-medium">
+          <span class="text-xs text-slate-500 dark:text-slate-400 font-medium hidden md:inline">
             {{ syncTimeText }}
           </span>
 
@@ -349,21 +287,17 @@ if ($path === '/api/full-schedule') {
             <span class="hidden sm:inline">Обновить</span>
           </button>
 
-          <!-- Переключатель темы (Dark / Light) -->
+          <!-- Переключатель светлой / темной темы -->
           <button 
             type="button"
             @click="toggleTheme()" 
-            title="Сменить тему оформления" 
-            class="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 bg-slate-100 dark:bg-slate-800 transition"
+            title="Переключить тему"
+            class="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
-            <!-- Иконка луны (в светлой теме) -->
-            <svg v-if="!isDark" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
-            </svg>
-            <!-- Иконка солнца (в тёмной теме) -->
-            <svg v-else class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
-            </svg>
+            <!-- Иконка солнца -->
+            <svg v-if="isDark" class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+            <!-- Иконка луны -->
+            <svg v-else class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
           </button>
         </div>
 
@@ -433,10 +367,17 @@ if ($path === '/api/full-schedule') {
               </template>
             </div>
 
-            <!-- Кнопка переключения "Один день / Вся неделя" -->
-            <div class="mt-4 pt-3">
+            <!-- Легенда и кнопка переключения на всю неделю -->
+            <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+              <div class="flex items-center justify-between text-[11px] text-slate-400 font-medium">
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Лекция</span>
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-purple-500"></span>Лабораторная</span>
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Практика</span>
+              </div>
+
+              <!-- Переключатель режима "День" / "Вся неделя" -->
               <button 
-                type="button"
+                type="button" 
                 @click="toggleWeekView()" 
                 :class="[
                   'w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2',
@@ -455,15 +396,61 @@ if ($path === '/api/full-schedule') {
         <!-- ПРАВАЯ КОЛОНКА: Сетка расписания пар -->
         <section class="lg:col-span-7 xl:col-span-8 space-y-4">
           
-          <!-- Шапка правого блока: Полный заголовок дня (БЕЗ обрезания в ...) + Кнопка фильтров + Заметка на день -->
-          <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white capitalize leading-tight">
-              {{ currentViewTitle }}
-            </h2>
+          <!-- Шапка правого блока: Заголовок дня + Переключатель групп + Фильтры по типу -->
+          <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white capitalize leading-tight">
+                {{ currentViewTitle }}
+              </h2>
+            </div>
 
-            <div class="flex items-center gap-2 shrink-0">
+            <div class="flex items-center gap-2 shrink-0 flex-wrap">
               
-              <!-- Раскрывающаяся кнопка-плашка "Фильтры" -->
+              <!-- Переключатель групп (Табы: Все / ПМ-1-24 / ЦК-ИЦС-3) -->
+              <div class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
+                <button 
+                  type="button" 
+                  @click="selectGroupFilter('all')"
+                  :class="[
+                    'px-2.5 py-1 rounded-xl text-xs font-bold transition',
+                    activeGroupFilter === 'all' 
+                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm' 
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ]"
+                >
+                  Все группы
+                </button>
+
+                <button 
+                  type="button" 
+                  @click="selectGroupFilter('14493')"
+                  :class="[
+                    'px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1',
+                    activeGroupFilter === '14493' 
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20' 
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ]"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full" :class="activeGroupFilter === '14493' ? 'bg-white' : 'bg-indigo-500'"></span>
+                  <span>ПМ-1-24</span>
+                </button>
+
+                <button 
+                  type="button" 
+                  @click="selectGroupFilter('15006')"
+                  :class="[
+                    'px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1',
+                    activeGroupFilter === '15006' 
+                      ? 'bg-teal-600 text-white shadow-sm shadow-teal-500/20' 
+                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                  ]"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full" :class="activeGroupFilter === '15006' ? 'bg-white' : 'bg-teal-500'"></span>
+                  <span>ЦК-ИЦС-3</span>
+                </button>
+              </div>
+
+              <!-- Раскрывающаяся кнопка-плашка "Фильтры по типу" -->
               <div id="filters-container" class="relative">
                 <button 
                   type="button"
@@ -476,7 +463,7 @@ if ($path === '/api/full-schedule') {
                 </button>
 
                 <!-- Отдельная выпадающая плашка фильтров -->
-                <div v-show="isFiltersOpen" class="absolute right-0 z-30 mt-2 w-52 origin-top-right rounded-2xl bg-white dark:bg-slate-900 p-2 shadow-2xl border border-slate-100 dark:border-slate-800">
+                <div v-show="isFiltersOpen" class="absolute right-0 z-30 mt-2 w-48 origin-top-right rounded-2xl bg-white dark:bg-slate-900 p-2 shadow-2xl border border-slate-100 dark:border-slate-800">
                   <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 py-1.5">
                     Тип занятий
                   </div>
@@ -501,48 +488,6 @@ if ($path === '/api/full-schedule') {
                 </div>
               </div>
 
-              <!-- Кнопка "Заметка на день" (ровно один плюс из SVG иконки) -->
-              <button 
-                type="button"
-                @click="openAddDayNoteModal()" 
-                class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
-              >
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                <span>Заметка на день</span>
-              </button>
-            </div>
-          </div>
-
-          <!-- Блок общих заметок на текущий день -->
-          <div v-if="dayGeneralNotes && dayGeneralNotes.length > 0" class="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-indigo-100/60 dark:border-indigo-950/40">
-            <div class="flex items-center justify-between mb-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-              <span class="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
-                <span>Заметки на этот день ({{ dayGeneralNotes.length }})</span>
-              </span>
-            </div>
-            <div class="space-y-1.5">
-              <div v-for="note in dayGeneralNotes" :key="note.id" class="flex items-center justify-between group py-1 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
-                <label class="flex items-center gap-2.5 cursor-pointer select-none flex-1 min-w-0 pr-2">
-                  <input 
-                    type="checkbox" 
-                    :checked="note.completed"
-                    @change="toggleCustomNoteCheckbox(note.id, $event.target.checked)"
-                    class="w-4 h-4 rounded text-indigo-600 accent-indigo-600 cursor-pointer transition shrink-0"
-                  >
-                  <span :class="['text-xs font-medium truncate', note.completed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-800 dark:text-slate-200']">
-                    {{ cleanTaskTitle(note.text) }}
-                  </span>
-                </label>
-                <div class="flex items-center gap-1 opacity-80 group-hover:opacity-100 transition shrink-0">
-                  <button type="button" @click="openEditCustomNoteModal(note)" title="Редактировать" class="p-1 rounded text-slate-400 hover:text-indigo-600">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                  </button>
-                  <button type="button" @click="deleteCustomNote(note.id)" title="Удалить" class="p-1 rounded text-slate-400 hover:text-rose-600">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
 
@@ -559,7 +504,7 @@ if ($path === '/api/full-schedule') {
               <p class="text-xs text-slate-400">Свободный день или выходной</p>
             </div>
 
-            <!-- Карточка пары -->
+            <!-- Карточка пары (чистая, информативная, без чекбоксов) -->
             <article 
               v-for="pair in displayedPairs" 
               :key="getPairKey(pair)"
@@ -579,7 +524,7 @@ if ($path === '/api/full-schedule') {
               ></div>
 
               <div>
-                <!-- Верхняя строка: Номер пары, Время, Статус, Подгруппа, Тип -->
+                <!-- Верхняя строка: Номер пары, Время, Статус "Сейчас", Группа, Подгруппа, Тип -->
                 <div class="flex items-center justify-between gap-2 mb-2 pl-2">
                   <div class="flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200">
@@ -594,10 +539,25 @@ if ($path === '/api/full-schedule') {
                     </span>
                   </div>
 
-                  <div class="flex items-center gap-1.5">
+                  <!-- Метки: ГРУППА + Подгруппа + Тип пары -->
+                  <div class="flex items-center gap-1.5 flex-wrap justify-end">
+                    
+                    <!-- Бейдж ГРУППЫ: ПМ-1-24 (индиго) vs ЦК-ИЦС-3 (бирюзовый) -->
+                    <span 
+                      :class="[
+                        'px-2 py-0.5 rounded-md text-[11px] font-extrabold border',
+                        (String(pair.groupId) === '15006' || pair.groupName === 'ЦК-ИЦС-3')
+                          ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30'
+                          : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
+                      ]"
+                    >
+                      {{ pair.groupName || (String(pair.groupId) === '15006' ? 'ЦК-ИЦС-3' : 'ПМ-1-24') }}
+                    </span>
+
                     <span v-if="pair.номерПодгруппы && pair.номерПодгруппы > 0" class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
                       {{ pair.номерПодгруппы }} п/г
                     </span>
+
                     <span :class="['px-2.5 py-0.5 rounded-md text-[11px] font-bold', parseDiscipline(pair.дисциплина).badgeClass]">
                       {{ parseDiscipline(pair.дисциплина).type }}
                     </span>
@@ -627,92 +587,6 @@ if ($path === '/api/full-schedule') {
                 </div>
               </div>
 
-              <!-- Раздел задач и лабораторных работ к паре -->
-              <div class="mt-3 pt-2.5 border-t border-slate-100/70 dark:border-slate-800/60 pl-2">
-                <div class="flex items-center justify-between mb-1.5">
-                  <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                    Задачи и лабы
-                  </span>
-                  <button 
-                    type="button"
-                    @click="openAddPairNoteModal(getPairKey(pair), pair.дата ? pair.дата.split('T')[0] : selectedDate)" 
-                    class="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 flex items-center gap-1 px-1.5 py-0.5 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/50 transition"
-                  >
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                    <span>Добавить</span>
-                  </button>
-                </div>
-
-                <div class="space-y-1">
-                  <!-- Стандартная лаба по расписанию (БЕЗ TODO:) -->
-                  <template v-if="getLabInfo(pair) && !getLabInfo(pair).isDeleted">
-                    <div class="flex items-center justify-between group py-1 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
-                      <label class="flex items-center gap-2.5 cursor-pointer select-none flex-1 min-w-0 pr-2">
-                        <input 
-                          type="checkbox" 
-                          :checked="getLabInfo(pair).isChecked"
-                          @change="toggleTodoCheckbox(getLabInfo(pair).todoKey, $event.target.checked)"
-                          class="w-4 h-4 rounded text-indigo-600 focus:ring-0 accent-indigo-600 cursor-pointer transition shrink-0"
-                        >
-                        <span :class="['text-xs font-semibold truncate transition', getLabInfo(pair).isChecked ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200']">
-                          {{ getLabInfo(pair).label }}
-                        </span>
-                      </label>
-                      
-                      <div class="flex items-center gap-1 shrink-0">
-                        <span :class="['text-[10px] font-bold px-1.5 py-0.5 rounded', getLabInfo(pair).isChecked ? 'bg-emerald-500/10 text-emerald-600' : 'bg-purple-500/10 text-purple-600']">
-                          {{ getLabInfo(pair).isChecked ? 'Сдано ✓' : 'К сдаче' }}
-                        </span>
-                        <button 
-                          type="button" 
-                          @click="openEditDefaultLabModal(getLabInfo(pair).todoKey, getLabInfo(pair).label)" 
-                          title="Переименовать" 
-                          class="p-1 rounded text-slate-400 hover:text-indigo-600"
-                        >
-                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                        </button>
-                        <button 
-                          type="button" 
-                          @click="deleteDefaultLab(getLabInfo(pair).todoKey)" 
-                          title="Удалить" 
-                          class="p-1 rounded text-slate-400 hover:text-rose-600"
-                        >
-                          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                        </button>
-                      </div>
-                    </div>
-                  </template>
-
-                  <!-- Кастомные задачи пары -->
-                  <div 
-                    v-for="task in getCustomTasksForPair(pair)" 
-                    :key="task.id"
-                    class="flex items-center justify-between group py-1 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition"
-                  >
-                    <label class="flex items-center gap-2.5 cursor-pointer select-none flex-1 min-w-0 pr-2">
-                      <input 
-                        type="checkbox" 
-                        :checked="task.completed"
-                        @change="toggleCustomNoteCheckbox(task.id, $event.target.checked)"
-                        class="w-4 h-4 rounded text-indigo-600 focus:ring-0 accent-indigo-600 cursor-pointer transition shrink-0"
-                      >
-                      <span :class="['text-xs font-semibold truncate transition', task.completed ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200']">
-                        {{ cleanTaskTitle(task.text) }}
-                      </span>
-                    </label>
-                    <div class="flex items-center gap-1 shrink-0">
-                      <button type="button" @click="openEditCustomNoteModal(task)" title="Редактировать" class="p-1 rounded text-slate-400 hover:text-indigo-600">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-                      </button>
-                      <button type="button" @click="deleteCustomNote(task.id)" title="Удалить" class="p-1 rounded text-slate-400 hover:text-rose-600">
-                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-
             </article>
           </div>
 
@@ -720,51 +594,6 @@ if ($path === '/api/full-schedule') {
 
       </div>
     </main>
-
-    <!-- Модальное окно создания / редактирования заметки -->
-    <div v-show="modal.isOpen" class="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-      <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-100 dark:border-slate-800 transition-all">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-base font-bold text-slate-900 dark:text-white">
-            {{ modal.title }}
-          </h3>
-          <button type="button" @click="closeModal()" class="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
-        </div>
-
-        <form @submit.prevent="handleModalSubmit()" class="space-y-4">
-          <div>
-            <label class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-              Текст задачи или лабораторной
-            </label>
-            <input 
-              type="text" 
-              v-model="modal.text" 
-              required 
-              placeholder="Новая заметка на день..."
-              class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
-            >
-          </div>
-
-          <div class="flex items-center justify-end gap-2 pt-2">
-            <button 
-              type="button" 
-              @click="closeModal()" 
-              class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-            >
-              Отмена
-            </button>
-            <button 
-              type="submit" 
-              class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-sm shadow-indigo-500/20"
-            >
-              Сохранить
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
 
   </div> <!-- /#app -->
 
