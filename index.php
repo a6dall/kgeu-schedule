@@ -2,7 +2,9 @@
 /**
  * ==============================================================================
  * КГЭУ Расписание — Бэкенд на чистом PHP + Шаблон Vue.js 3
- * Объединённое расписание групп: ПМ-1-24 (Синий) и ЦК-ИЦС-3 (Оранжевый)
+ * Объединённое расписание: ПМ-1-24 и ЦК-ИЦС-3
+ * Цвета по типам занятий: Лекция (зеленый), Лаба (фиолетовый), Практика (янтарный)
+ * Количество точек в календаре = количеству пар в дне
  * ==============================================================================
  */
 
@@ -17,7 +19,7 @@ if (php_sapi_name() === 'cli') {
     $url = "http://{$host}:{$port}";
 
     echo "\033[1;32m========================================================\033[0m\n";
-    echo "\033[1;34m🎓 Расписание КГЭУ: ПМ-1-24 (Синий) + ЦК-ИЦС-3 (Оранжевый)\033[0m\n";
+    echo "\033[1;36m🎓 Расписание КГЭУ: ПМ-1-24 + ЦК-ИЦС-3\033[0m\n";
     echo "⚡ Адрес приложения: {$url}\n";
     echo "🔄 API проксирование kabinet.kgeu.ru активно\n";
     echo "❌ Для остановки нажмите Ctrl + C\n";
@@ -175,7 +177,6 @@ if ($path === '/api/full-schedule') {
         }
     }
 
-    // Сортировка всех пар по дате и времени начала
     usort($combinedPairs, function($a, $b) {
         $d = strcmp($a['дата'] ?? '', $b['дата'] ?? '');
         if ($d !== 0) return $d;
@@ -216,7 +217,7 @@ if ($path === '/api/full-schedule') {
       theme: {
         extend: {
           colors: {
-            brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' }
+            brand: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' }
           }
         }
       }
@@ -244,10 +245,10 @@ if ($path === '/api/full-schedule') {
             Расписание КГЭУ
           </h1>
           <div class="flex items-center gap-1.5">
-            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
               ПМ-1-24
             </span>
-            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/30">
+            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
               ЦК-ИЦС-3
             </span>
           </div>
@@ -266,7 +267,7 @@ if ($path === '/api/full-schedule') {
             title="Синхронизировать с сайтом kabinet.kgeu.ru"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
           >
-            <svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" :class="{ 'animate-spin': isSyncing }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" :class="{ 'animate-spin': isSyncing }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
             <span class="hidden sm:inline">Обновить</span>
@@ -303,7 +304,7 @@ if ($path === '/api/full-schedule') {
               </h3>
               
               <div class="flex items-center gap-1">
-                <button type="button" @click="resetToToday()" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition">
+                <button type="button" @click="resetToToday()" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition">
                   Сегодня
                 </button>
                 <button type="button" @click="prevMonth()" title="Предыдущий месяц" class="p-1 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
@@ -332,33 +333,34 @@ if ($path === '/api/full-schedule') {
                   type="button"
                   @click="selectCalendarDate(d.dateStr)"
                   :class="[
-                    'aspect-square rounded-xl p-1 flex flex-col items-center justify-center text-xs transition relative',
-                    d.isSelected ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/30' : 
-                    (d.isWeekHighlighted ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'),
-                    (d.isToday && !d.isSelected) ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-slate-900 font-bold' : ''
+                    'aspect-square rounded-xl p-1 flex flex-col items-center justify-between text-xs transition relative min-h-[46px]',
+                    d.isSelected ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-500/30' : 
+                    (d.isWeekHighlighted ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'),
+                    (d.isToday && !d.isSelected) ? 'ring-2 ring-indigo-500 ring-offset-1 dark:ring-offset-slate-900 font-bold' : ''
                   ]"
                 >
-                  <span>{{ d.dayNumber }}</span>
-                  <!-- Точки групп (Синяя: ПМ-1-24, Оранжевая: ЦК-ИЦС-3) -->
-                  <div v-if="d.hasPm || d.hasCk" class="flex items-center justify-center gap-1 mt-0.5">
-                    <span v-if="d.hasPm" class="w-1.5 h-1.5 rounded-full bg-blue-600" title="ПМ-1-24"></span>
-                    <span v-if="d.hasCk" class="w-1.5 h-1.5 rounded-full bg-orange-500" title="ЦК-ИЦС-3"></span>
+                  <span class="mt-0.5 leading-none">{{ d.dayNumber }}</span>
+                  
+                  <!-- Точки по количеству пар в дне (цвет соответствует типу пары) -->
+                  <div v-if="d.dots && d.dots.length > 0" class="flex items-center justify-center gap-0.5 mb-1 flex-wrap max-w-[34px]">
+                    <span 
+                      v-for="(dot, idx) in d.dots" 
+                      :key="idx" 
+                      :class="['w-1.5 h-1.5 rounded-full shrink-0', dot.colorClass]"
+                      :title="dot.type"
+                    ></span>
                   </div>
+                  <div v-else class="h-2"></div>
                 </button>
               </template>
             </div>
 
-            <!-- Легенда групп и кнопка переключения на всю неделю -->
+            <!-- Легенда типов занятий и кнопка переключения на всю неделю -->
             <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
-              <div class="flex items-center justify-center gap-4 text-[11px] text-slate-500 font-semibold">
-                <span class="flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-blue-600"></span>
-                  <span>ПМ-1-24</span>
-                </span>
-                <span class="flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-orange-500"></span>
-                  <span>ЦК-ИЦС-3</span>
-                </span>
+              <div class="flex items-center justify-center gap-3 text-[11px] text-slate-500 font-medium">
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Лекция</span>
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-purple-500"></span>Лабораторная</span>
+                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Практика</span>
               </div>
 
               <!-- Переключатель режима "День" / "Вся неделя" -->
@@ -367,7 +369,7 @@ if ($path === '/api/full-schedule') {
                 @click="toggleWeekView()" 
                 :class="[
                   'w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2',
-                  currentViewMode === 'week' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50'
+                  currentViewMode === 'week' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
                 ]"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
@@ -382,7 +384,7 @@ if ($path === '/api/full-schedule') {
         <!-- ПРАВАЯ КОЛОНКА: Сетка расписания пар -->
         <section class="lg:col-span-7 xl:col-span-8 space-y-4">
           
-          <!-- Шапка правого блока: Заголовок дня + Переключатель групп -->
+          <!-- Шапка правого блока: Заголовок дня + Фильтр только по группам -->
           <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white capitalize leading-tight">
@@ -390,7 +392,7 @@ if ($path === '/api/full-schedule') {
               </h2>
             </div>
 
-            <!-- Переключатель групп (Табы: Все группы / ПМ-1-24 / ЦК-ИЦС-3) -->
+            <!-- Фильтр групп (Табы: Все группы / ПМ-1-24 / ЦК-ИЦС-3) -->
             <div class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl shrink-0">
               <button 
                 type="button" 
@@ -409,28 +411,26 @@ if ($path === '/api/full-schedule') {
                 type="button" 
                 @click="selectGroupFilter('14493')"
                 :class="[
-                  'px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5',
+                  'px-3 py-1.5 rounded-xl text-xs font-bold transition',
                   activeGroupFilter === '14493' 
-                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20' 
+                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20' 
                     : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                 ]"
               >
-                <span class="w-1.5 h-1.5 rounded-full" :class="activeGroupFilter === '14493' ? 'bg-white' : 'bg-blue-600'"></span>
-                <span>ПМ-1-24</span>
+                ПМ-1-24
               </button>
 
               <button 
                 type="button" 
                 @click="selectGroupFilter('15006')"
                 :class="[
-                  'px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5',
+                  'px-3 py-1.5 rounded-xl text-xs font-bold transition',
                   activeGroupFilter === '15006' 
-                    ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/20' 
+                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20' 
                     : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
                 ]"
               >
-                <span class="w-1.5 h-1.5 rounded-full" :class="activeGroupFilter === '15006' ? 'bg-white' : 'bg-orange-500'"></span>
-                <span>ЦК-ИЦС-3</span>
+                ЦК-ИЦС-3
               </button>
             </div>
           </div>
@@ -439,7 +439,7 @@ if ($path === '/api/full-schedule') {
           <div class="space-y-3.5">
             <!-- Заглушка, если в этот день пар нет -->
             <div v-if="!displayedPairs || displayedPairs.length === 0" class="text-center py-16 px-6 bg-white dark:bg-slate-900 rounded-3xl shadow-sm">
-              <div class="w-14 h-14 mx-auto mb-3 bg-blue-50 dark:bg-blue-950/40 rounded-2xl flex items-center justify-center text-blue-600">
+              <div class="w-14 h-14 mx-auto mb-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl flex items-center justify-center text-indigo-500">
                 <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4M12 20V4"/></svg>
               </div>
               <h3 class="text-base font-bold text-slate-800 dark:text-slate-100 mb-1">
@@ -448,7 +448,7 @@ if ($path === '/api/full-schedule') {
               <p class="text-xs text-slate-400">Свободный день или выходной</p>
             </div>
 
-            <!-- Карточка пары (Цвет полоски и бейдж соответствуют группе) -->
+            <!-- Карточка пары с разделением по цветам и типам (Лекция, Лабораторная, Практика) -->
             <article 
               v-for="pair in displayedPairs" 
               :key="getPairKey(pair)"
@@ -457,16 +457,16 @@ if ($path === '/api/full-schedule') {
                 isPairCurrent(pair.датаНачала, pair.датаОкончания) ? 'ring-2 ring-emerald-500' : ''
               ]"
             >
-              <!-- Левая цветная полоса группы: Синяя для ПМ-1-24, Оранжевая для ЦК-ИЦС-3 -->
+              <!-- Левая цветная полоса ТИПА ЗАНЯТИЯ: зеленый (лекция), фиолетовый (лаба), янтарный (практика) -->
               <div 
                 :class="[
                   'absolute left-0 top-0 bottom-0 w-1.5',
-                  (String(pair.groupId) === '15006' || pair.groupName === 'ЦК-ИЦС-3') ? 'bg-orange-500' : 'bg-blue-600'
+                  parseDiscipline(pair.дисциплина).stripeClass
                 ]"
               ></div>
 
               <div>
-                <!-- Верхняя строка: Номер пары, Время, Статус "Сейчас", Группа, Подгруппа -->
+                <!-- Верхняя строка: Номер пары, Время, Статус "Сейчас", Группа, Подгруппа, ТИП ЗАНЯТИЯ -->
                 <div class="flex items-center justify-between gap-2 mb-2 pl-2">
                   <div class="flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200">
@@ -481,30 +481,28 @@ if ($path === '/api/full-schedule') {
                     </span>
                   </div>
 
-                  <!-- Метка группы + номер подгруппы -->
+                  <!-- Метки: ГРУППА + Подгруппа + ТИП ЗАНЯТИЯ (Лекция / Лабораторная / Практика) -->
                   <div class="flex items-center gap-1.5 flex-wrap justify-end">
                     
-                    <!-- Бейдж ГРУППЫ: Синий для ПМ-1-24, Оранжевый для ЦК-ИЦС-3 -->
-                    <span 
-                      :class="[
-                        'px-2.5 py-0.5 rounded-md text-[11px] font-extrabold border tracking-wide',
-                        (String(pair.groupId) === '15006' || pair.groupName === 'ЦК-ИЦС-3')
-                          ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30'
-                          : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30'
-                      ]"
-                    >
+                    <!-- Бейдж ГРУППЫ -->
+                    <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                       {{ pair.groupName || (String(pair.groupId) === '15006' ? 'ЦК-ИЦС-3' : 'ПМ-1-24') }}
                     </span>
 
-                    <span v-if="pair.номерПодгруппы && pair.номерПодгруппы > 0" class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    <span v-if="pair.номерПодгруппы && pair.номерПодгруппы > 0" class="px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
                       {{ pair.номерПодгруппы }} п/г
+                    </span>
+
+                    <!-- Бейдж ТИПА: Лекция (зеленый), Лабораторная (фиолетовый), Практика (янтарный) -->
+                    <span :class="['px-2.5 py-0.5 rounded-md text-[11px] font-bold', parseDiscipline(pair.дисциплина).badgeClass]">
+                      {{ parseDiscipline(pair.дисциплина).type }}
                     </span>
                   </div>
                 </div>
 
-                <!-- Чистое название предмета (без лек/лаб/пр) -->
+                <!-- Чистое название предмета -->
                 <h4 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-snug pl-2">
-                  {{ cleanDisciplineTitle(pair.дисциплина) }}
+                  {{ parseDiscipline(pair.дисциплина).title }}
                 </h4>
               </div>
 

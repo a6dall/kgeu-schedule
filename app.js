@@ -1,7 +1,10 @@
 /**
  * ==============================================================================
  * КГЭУ Расписание — Клиентская часть на Vue.js 3
- * Объединённое расписание: ПМ-1-24 (синий) и ЦК-ИЦС-3 (оранжевый)
+ * Объединённое расписание групп: ПМ-1-24 и ЦК-ИЦС-3
+ * Цветовая дифференциация по типам: Лекция (зеленый), Лаба (фиолетовый), Практика (янтарный)
+ * Количество точек в календаре = количеству пар в дне
+ * Фильтрация строго по группам (Все / ПМ-1-24 / ЦК-ИЦС-3)
  * ==============================================================================
  */
 
@@ -46,15 +49,75 @@ function formatCustomWeekTitle(startDateStr, endDateStr) {
 }
 
 /**
- * Очищает название предмета от префиксов (лек, лаб, пр, зач, экз)
- * Например: "лаб Программирование на Python" -> "Программирование на Python"
+ * Парсер строки дисциплины из API КГЭУ
+ * Возвращает тип пары (Лекция, Лабораторная, Практика), цвета бейджа, полоски и точки
  */
-function cleanDisciplineTitle(rawName) {
-  if (!rawName) return '—';
-  return String(rawName)
-    .trim()
-    .replace(/^(лек|лаб|пр|зач|экз)\s+/iu, '')
-    .trim();
+function parseDiscipline(rawName) {
+  if (!rawName) {
+    return { 
+      type: 'Занятие', 
+      typeKey: 'other', 
+      title: '—', 
+      badgeClass: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+      stripeClass: 'bg-indigo-500',
+      dotClass: 'bg-indigo-500'
+    };
+  }
+  const trimmed = String(rawName).trim();
+  if (trimmed.startsWith('лек ')) {
+    return {
+      type: 'Лекция',
+      typeKey: 'lecture',
+      title: trimmed.replace(/^лек\s+/, ''),
+      badgeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+      stripeClass: 'bg-emerald-500',
+      dotClass: 'bg-emerald-500'
+    };
+  } else if (trimmed.startsWith('лаб ')) {
+    return {
+      type: 'Лабораторная',
+      typeKey: 'lab',
+      title: trimmed.replace(/^лаб\s+/, ''),
+      badgeClass: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20',
+      stripeClass: 'bg-purple-500',
+      dotClass: 'bg-purple-500'
+    };
+  } else if (trimmed.startsWith('пр ')) {
+    return {
+      type: 'Практика',
+      typeKey: 'practice',
+      title: trimmed.replace(/^пр\s+/, ''),
+      badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+      stripeClass: 'bg-amber-500',
+      dotClass: 'bg-amber-500'
+    };
+  } else if (trimmed.startsWith('зач ')) {
+    return {
+      type: 'Зачет',
+      typeKey: 'exam',
+      title: trimmed.replace(/^зач\s+/, ''),
+      badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20',
+      stripeClass: 'bg-rose-500',
+      dotClass: 'bg-rose-500'
+    };
+  } else if (trimmed.startsWith('экз ')) {
+    return {
+      type: 'Экзамен',
+      typeKey: 'exam',
+      title: trimmed.replace(/^экз\s+/, ''),
+      badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20',
+      stripeClass: 'bg-rose-500',
+      dotClass: 'bg-rose-500'
+    };
+  }
+  return {
+    type: 'Занятие',
+    typeKey: 'other',
+    title: trimmed,
+    badgeClass: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20',
+    stripeClass: 'bg-indigo-500',
+    dotClass: 'bg-indigo-500'
+  };
 }
 
 /** Уникальный ключ для идентификации пары в расписании */
@@ -152,7 +215,9 @@ createApp({
       }
     });
 
-    // Генерация сетки дней для текущего месяца календаря с точками групп
+    // Генерация сетки дней для календаря:
+    // Количество точек = строго количеству пар в этот день!
+    // Цвет каждой точки = типу занятия (зеленая - лекция, фиолетовая - лаба, янтарная - практика)
     const calendarDays = computed(() => {
       const year = calendarMonth.value.getFullYear();
       const month = calendarMonth.value.getMonth();
@@ -179,17 +244,27 @@ createApp({
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         let pairs = allPairsMap.value[dateStr] || [];
 
-        // Если включен фильтр конкретной группы — фильтруем и точки в календаре
+        // Если включен фильтр конкретной группы — фильтруем пары и точки в календаре
         if (activeGroupFilter.value !== 'all') {
           pairs = pairs.filter(p => String(p.groupId) === String(activeGroupFilter.value));
         }
 
-        let hasPm = false;
-        let hasCk = false;
-
+        // Дедупликация одинаковых пар
+        const unique = new Map();
         pairs.forEach(p => {
-          if (String(p.groupId) === '14493' || p.groupName === 'ПМ-1-24') hasPm = true;
-          if (String(p.groupId) === '15006' || p.groupName === 'ЦК-ИЦС-3') hasCk = true;
+          const k = getPairKey(p);
+          if (!unique.has(k)) unique.set(k, p);
+        });
+        const dayPairs = Array.from(unique.values());
+        dayPairs.sort((a, b) => (a.начало || '').localeCompare(b.начало || ''));
+
+        // Каждая точка соответствует одной конкретной паре в этот день
+        const dots = dayPairs.map(p => {
+          const disc = parseDiscipline(p.дисциплина);
+          return {
+            type: disc.type,
+            colorClass: disc.dotClass
+          };
         });
 
         days.push({
@@ -199,8 +274,7 @@ createApp({
           isSelected: selectedDate.value === dateStr,
           isWeekHighlighted: currentViewMode.value === 'week' && weekDates.includes(dateStr),
           isToday: dateStr === realToday,
-          hasPm,
-          hasCk
+          dots
         });
       }
 
@@ -429,7 +503,7 @@ createApp({
       selectGroupFilter,
       toggleTheme,
       manualRefresh,
-      cleanDisciplineTitle,
+      parseDiscipline,
       isPairCurrent,
       getPairKey
     };
