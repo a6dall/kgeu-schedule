@@ -56,7 +56,7 @@ function parseDiscipline(rawName) {
       type: 'Лекция',
       typeKey: 'lecture',
       title: trimmed.replace(/^лек\s+/, ''),
-      badgeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20',
+      badgeClass: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30',
       stripeClass: 'bg-emerald-500',
       dotClass: 'bg-emerald-500'
     };
@@ -65,7 +65,7 @@ function parseDiscipline(rawName) {
       type: 'Лабораторная',
       typeKey: 'lab',
       title: trimmed.replace(/^лаб\s+/, ''),
-      badgeClass: 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20',
+      badgeClass: 'bg-purple-100 text-purple-900 dark:bg-purple-500/20 dark:text-purple-300 border border-purple-300 dark:border-purple-500/30',
       stripeClass: 'bg-purple-500',
       dotClass: 'bg-purple-500'
     };
@@ -74,7 +74,7 @@ function parseDiscipline(rawName) {
       type: 'Практика',
       typeKey: 'practice',
       title: trimmed.replace(/^пр\s+/, ''),
-      badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20',
+      badgeClass: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30',
       stripeClass: 'bg-amber-500',
       dotClass: 'bg-amber-500'
     };
@@ -156,16 +156,36 @@ createApp({
     // Флаг тёмной темы оформления
     const isDark = ref(false);
 
+    // Флаг сворачивания календаря до одной недели (сохраняется в браузере)
+    const isCalendarCollapsed = ref(localStorage.getItem('kgeu_cal_collapsed') === 'true');
+
     // --------------------------------------------------------------------------
     // 2. ВЫЧИСЛЯЕМЫЕ СВОЙСТВА (COMPUTED)
     // --------------------------------------------------------------------------
 
-    // Название текущего месяца для шапки календаря (например: «Ноябрь 2026»)
+    // Название текущего месяца или диапазона недели для шапки календаря
     const calendarMonthTitle = computed(() => {
-      return calendarMonth.value.toLocaleDateString('ru-RU', {
-        month: 'long',
-        year: 'numeric'
-      }).replace(' г.', '');
+      if (!isCalendarCollapsed.value) {
+        return calendarMonth.value.toLocaleDateString('ru-RU', {
+          month: 'long',
+          year: 'numeric'
+        }).replace(' г.', '');
+      }
+
+      // В режиме свернутого календаря (1 неделя) вычисляем диапазон дней недели
+      const days = calendarDays.value;
+      if (!days || days.length < 7) return '';
+      const d1 = new Date(days[0].dateStr);
+      const d2 = new Date(days[6].dateStr);
+      const m1 = d1.toLocaleDateString('ru-RU', { month: 'long' });
+      const m2 = d2.toLocaleDateString('ru-RU', { month: 'long' });
+      if (d1.getMonth() === d2.getMonth()) {
+        return `${d1.getDate()}–${d2.getDate()} ${m1} ${d2.getFullYear()}`;
+      } else {
+        const m1Short = d1.toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '');
+        const m2Short = d2.toLocaleDateString('ru-RU', { month: 'short' }).replace('.', '');
+        return `${d1.getDate()} ${m1Short} – ${d2.getDate()} ${m2Short} ${d2.getFullYear()}`;
+      }
     });
 
     // Заголовок текущего дня без обрезания в "..." (например: «Среда — 18.11.2026»)
@@ -174,9 +194,64 @@ createApp({
     });
 
     // Генерация сетки дней для календаря:
+    // Либо 1 неделя (при сворачивании), либо полный месяц.
     // Количество точек = строго количеству пар в этот день!
-    // Цвет каждой точки = типу занятия (зеленая - лекция, фиолетовая - лаба, янтарная - практика)
     const calendarDays = computed(() => {
+      const realToday = getTodayDateStr();
+      const days = [];
+
+      // РЕЖИМ 1: Календарь свернут до 1 недели (Пн — Вс)
+      if (isCalendarCollapsed.value) {
+        const parts = selectedDate.value.split('-');
+        const target = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        let dayOfWeek = target.getDay(); // 0 (Вс) .. 6 (Сб)
+        if (dayOfWeek === 0) dayOfWeek = 7;
+        const diff = 1 - dayOfWeek; // смещение до понедельника
+        const monday = new Date(target);
+        monday.setDate(target.getDate() + diff);
+
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(monday);
+          d.setDate(monday.getDate() + i);
+          const y = d.getFullYear();
+          const m = String(d.getMonth() + 1).padStart(2, '0');
+          const dayNum = String(d.getDate()).padStart(2, '0');
+          const dateStr = `${y}-${m}-${dayNum}`;
+
+          let pairs = allPairsMap.value[dateStr] || [];
+          if (activeGroupFilter.value !== 'all') {
+            pairs = pairs.filter(p => String(p.groupId) === String(activeGroupFilter.value));
+          }
+          const unique = new Map();
+          pairs.forEach(p => {
+            const k = getPairKey(p);
+            if (!unique.has(k)) unique.set(k, p);
+          });
+          const dayPairs = Array.from(unique.values());
+          dayPairs.sort((a, b) => (a.начало || '').localeCompare(b.начало || ''));
+
+          const dots = dayPairs.map(p => {
+            const disc = parseDiscipline(p.дисциплина);
+            return {
+              type: disc.type,
+              colorClass: disc.dotClass
+            };
+          });
+
+          days.push({
+            isEmpty: false,
+            key: dateStr,
+            dayNumber: d.getDate(),
+            dateStr: dateStr,
+            isSelected: selectedDate.value === dateStr,
+            isToday: dateStr === realToday,
+            dots
+          });
+        }
+        return days;
+      }
+
+      // РЕЖИМ 2: Полный месяц
       const year = calendarMonth.value.getFullYear();
       const month = calendarMonth.value.getMonth();
 
@@ -187,9 +262,6 @@ createApp({
       if (startDayOfWeek === 0) startDayOfWeek = 7; // Делаем 1 (Пн) .. 7 (Вс)
 
       const totalDays = lastDay.getDate();
-      const realToday = getTodayDateStr();
-
-      const days = [];
 
       // Пустые ячейки в начале сетки до 1-го числа
       for (let i = 1; i < startDayOfWeek; i++) {
@@ -271,24 +343,58 @@ createApp({
     // Выбор дня в календаре
     function selectCalendarDate(dateStr) {
       selectedDate.value = dateStr;
+      const parts = dateStr.split('-');
+      calendarMonth.value = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
     }
 
-    // Предыдущий месяц в календаре
+    // Предыдущий период (неделя при свернутом календаре, месяц при развернутом)
     function prevMonth() {
-      calendarMonth.value = new Date(
-        calendarMonth.value.getFullYear(),
-        calendarMonth.value.getMonth() - 1,
-        1
-      );
+      if (isCalendarCollapsed.value) {
+        const parts = selectedDate.value.split('-');
+        const cur = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        cur.setDate(cur.getDate() - 7);
+        const y = cur.getFullYear();
+        const m = String(cur.getMonth() + 1).padStart(2, '0');
+        const d = String(cur.getDate()).padStart(2, '0');
+        selectedDate.value = `${y}-${m}-${d}`;
+        calendarMonth.value = new Date(cur.getFullYear(), cur.getMonth(), 1);
+      } else {
+        calendarMonth.value = new Date(
+          calendarMonth.value.getFullYear(),
+          calendarMonth.value.getMonth() - 1,
+          1
+        );
+      }
     }
 
-    // Следующий месяц в календаре
+    // Следующий период (неделя при свернутом календаре, месяц при развернутом)
     function nextMonth() {
-      calendarMonth.value = new Date(
-        calendarMonth.value.getFullYear(),
-        calendarMonth.value.getMonth() + 1,
-        1
-      );
+      if (isCalendarCollapsed.value) {
+        const parts = selectedDate.value.split('-');
+        const cur = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        cur.setDate(cur.getDate() + 7);
+        const y = cur.getFullYear();
+        const m = String(cur.getMonth() + 1).padStart(2, '0');
+        const d = String(cur.getDate()).padStart(2, '0');
+        selectedDate.value = `${y}-${m}-${d}`;
+        calendarMonth.value = new Date(cur.getFullYear(), cur.getMonth(), 1);
+      } else {
+        calendarMonth.value = new Date(
+          calendarMonth.value.getFullYear(),
+          calendarMonth.value.getMonth() + 1,
+          1
+        );
+      }
+    }
+
+    // Свернуть / развернуть календарь до одной недели (кнопка со стрелкой)
+    function toggleCalendarCollapse() {
+      isCalendarCollapsed.value = !isCalendarCollapsed.value;
+      try {
+        localStorage.setItem('kgeu_cal_collapsed', isCalendarCollapsed.value ? 'true' : 'false');
+      } catch (e) {}
+      const parts = selectedDate.value.split('-');
+      calendarMonth.value = new Date(Number(parts[0]), Number(parts[1]) - 1, 1);
     }
 
     // Возврат календаря на сегодняшний день
@@ -451,6 +557,8 @@ createApp({
       selectGroupFilter,
       toggleTheme,
       manualRefresh,
+      isCalendarCollapsed,
+      toggleCalendarCollapse,
       parseDiscipline,
       isPairCurrent,
       getPairKey

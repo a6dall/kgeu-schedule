@@ -293,7 +293,7 @@ if ($path === '/api/full-schedule') {
 
         <!-- Правая панель: время обновления, кнопка обновления, переключатель темы -->
         <div class="flex items-center gap-2 shrink-0">
-          <span class="text-[11px] sm:text-xs text-slate-400 dark:text-slate-500 font-medium whitespace-nowrap">
+          <span class="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 font-semibold whitespace-nowrap">
             {{ syncTimeText }}
           </span>
 
@@ -375,31 +375,43 @@ if ($path === '/api/full-schedule') {
         
         <div class="bg-white dark:bg-slate-900 rounded-3xl p-4 sm:p-5 shadow-sm">
           
-          <!-- Шапка календаря с переключением месяца -->
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="font-bold text-sm text-slate-900 dark:text-white capitalize">
+          <!-- Шапка календаря с переключением месяца/недели и кнопкой со стрелкой -->
+          <div class="flex items-center justify-between mb-3.5">
+            <h3 class="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white capitalize">
               {{ calendarMonthTitle }}
             </h3>
             
             <div class="flex items-center gap-1">
-              <button type="button" @click="resetToToday()" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition">
+              <button type="button" @click="resetToToday()" class="px-2.5 py-1 text-[11px] font-bold rounded-lg text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition">
                 Сегодня
               </button>
-              <button type="button" @click="prevMonth()" title="Предыдущий месяц" class="p-1 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+              <button type="button" @click="prevMonth()" :title="isCalendarCollapsed ? 'Предыдущая неделя' : 'Предыдущий месяц'" class="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
               </button>
-              <button type="button" @click="nextMonth()" title="Следующий месяц" class="p-1 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+              <button type="button" @click="nextMonth()" :title="isCalendarCollapsed ? 'Следующая неделя' : 'Следующий месяц'" class="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </button>
+
+              <!-- Кнопка со стрелкой свернуть/развернуть календарь до одной недели -->
+              <button 
+                type="button" 
+                @click="toggleCalendarCollapse()" 
+                :title="isCalendarCollapsed ? 'Развернуть на весь месяц' : 'Свернуть до одной недели'"
+                class="p-1.5 rounded-lg text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition ml-0.5"
+              >
+                <svg class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': isCalendarCollapsed }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/>
+                </svg>
               </button>
             </div>
           </div>
 
           <!-- Заголовки дней недели (Пн — Вс) -->
-          <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400 mb-2">
-            <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span class="text-rose-400">Сб</span><span class="text-rose-400">Вс</span>
+          <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-2">
+            <span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span class="text-rose-600 dark:text-rose-400">Сб</span><span class="text-rose-600 dark:text-rose-400">Вс</span>
           </div>
 
-          <!-- Реактивная сетка чисел месяца -->
+          <!-- Реактивная сетка чисел (1 неделя при сворачивании или весь месяц) -->
           <div class="grid grid-cols-7 gap-1">
             <template v-for="d in calendarDays" :key="d.key || d.dateStr">
               <!-- Пустой слот до первого числа -->
@@ -432,13 +444,26 @@ if ($path === '/api/full-schedule') {
             </template>
           </div>
 
-          <!-- Легенда типов занятий: Лекция, Лабораторная, Практика -->
-          <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <div class="flex items-center justify-center gap-3 text-[11px] text-slate-500 font-medium">
-              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Лекция</span>
-              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-purple-500"></span>Лабораторная</span>
-              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Практика</span>
+          <!-- Легенда и кнопка переключения недели/месяца со стрелкой -->
+          <div class="mt-3.5 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-2.5 text-[11px] text-slate-600 dark:text-slate-400 font-semibold">
+              <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Лекция</span>
+              <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-purple-500"></span>Лабораторная</span>
+              <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Практика</span>
             </div>
+
+            <!-- Кнопка со стрелкой внизу календаря -->
+            <button 
+              type="button" 
+              @click="toggleCalendarCollapse()"
+              class="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition"
+              :title="isCalendarCollapsed ? 'Развернуть на весь месяц' : 'Свернуть до одной недели'"
+            >
+              <span>{{ isCalendarCollapsed ? 'Месяц' : 'Неделя' }}</span>
+              <svg class="w-3.5 h-3.5 transition-transform duration-200" :class="{ 'rotate-180': isCalendarCollapsed }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+              </svg>
+            </button>
           </div>
 
         </div>
