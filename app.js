@@ -35,19 +35,6 @@ function formatFullDayTitle(dateStr) {
   return `${dayName} — ${dd}.${mm}.${yyyy}`;
 }
 
-/** Форматирование заголовка недели («Вся неделя — 16.11 – 22.11.2026») */
-function formatCustomWeekTitle(startDateStr, endDateStr) {
-  if (!startDateStr || !endDateStr) return '';
-  const d1 = new Date(startDateStr);
-  const d2 = new Date(endDateStr);
-  const dd1 = String(d1.getDate()).padStart(2, '0');
-  const mm1 = String(d1.getMonth() + 1).padStart(2, '0');
-  const dd2 = String(d2.getDate()).padStart(2, '0');
-  const mm2 = String(d2.getMonth() + 1).padStart(2, '0');
-  const yyyy2 = d2.getFullYear();
-  return `Вся неделя — ${dd1}.${mm1} – ${dd2}.${mm2}.${yyyy2}`;
-}
-
 /**
  * Парсер строки дисциплины из API КГЭУ
  * Возвращает тип пары (Лекция, Лабораторная, Практика), цвета бейджа, полоски и точки
@@ -132,27 +119,6 @@ function getPairKey(item) {
   return `${g}_${dateStr}_${num}_${time}_${sub}_${disc}`;
 }
 
-/** Возвращает массив из 7 дат недели (Пн..Вс) для указанной даты */
-function getWeekDates(targetDateStr) {
-  if (!targetDateStr) return [];
-  const target = new Date(targetDateStr);
-  const day = target.getDay(); // 0 (Вс) .. 6 (Сб)
-  const diff = (day === 0 ? -6 : 1) - day;
-  const monday = new Date(target);
-  monday.setDate(target.getDate() + diff);
-
-  const week = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(monday);
-    d.setDate(monday.getDate() + i);
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const dayNum = String(d.getDate()).padStart(2, '0');
-    week.push(`${y}-${m}-${dayNum}`);
-  }
-  return week;
-}
-
 /** Проверяет, идет ли пара прямо сейчас */
 function isPairCurrent(startIso, endIso) {
   if (!startIso || !endIso) return false;
@@ -176,9 +142,6 @@ createApp({
 
     // Выбранная дата в формате YYYY-MM-DD (по умолчанию — сегодня)
     const selectedDate = ref(getTodayDateStr());
-
-    // Режим отображения: 'day' (один день) или 'week' (вся неделя)
-    const currentViewMode = ref('day');
 
     // Месяц для левого календаря (объект Date)
     const calendarMonth = ref(new Date());
@@ -207,12 +170,7 @@ createApp({
 
     // Заголовок текущего дня без обрезания в "..." (например: «Среда — 18.11.2026»)
     const currentViewTitle = computed(() => {
-      if (currentViewMode.value === 'day') {
-        return formatFullDayTitle(selectedDate.value);
-      } else {
-        const week = getWeekDates(selectedDate.value);
-        return formatCustomWeekTitle(week[0], week[6]);
-      }
+      return formatFullDayTitle(selectedDate.value);
     });
 
     // Генерация сетки дней для календаря:
@@ -230,7 +188,6 @@ createApp({
 
       const totalDays = lastDay.getDate();
       const realToday = getTodayDateStr();
-      const weekDates = currentViewMode.value === 'week' ? getWeekDates(selectedDate.value) : [];
 
       const days = [];
 
@@ -272,7 +229,6 @@ createApp({
           dayNumber: d,
           dateStr: dateStr,
           isSelected: selectedDate.value === dateStr,
-          isWeekHighlighted: currentViewMode.value === 'week' && weekDates.includes(dateStr),
           isToday: dateStr === realToday,
           dots
         });
@@ -281,19 +237,9 @@ createApp({
       return days;
     });
 
-    // Список пар, отфильтрованный по выбранной дате/неделе и группе
+    // Список пар, отфильтрованный по выбранной дате и группе
     const displayedPairs = computed(() => {
-      let rawPairs = [];
-
-      if (currentViewMode.value === 'day') {
-        rawPairs = allPairsMap.value[selectedDate.value] || [];
-      } else {
-        const week = getWeekDates(selectedDate.value);
-        week.forEach(d => {
-          const p = allPairsMap.value[d] || [];
-          rawPairs.push(...p);
-        });
-      }
+      let rawPairs = allPairsMap.value[selectedDate.value] || [];
 
       // Фильтрация по группе (ПМ-1-24 или ЦК-ИЦС-3)
       if (activeGroupFilter.value !== 'all') {
@@ -322,15 +268,9 @@ createApp({
     // 3. МЕТОДЫ (МГНОВЕННЫЕ ДЕЙСТВИЯ БЕЗ ПЕРЕЗАГРУЗОК)
     // --------------------------------------------------------------------------
 
-    // Выбор дня в календаре: меняет дату и моментально перерисовывает расписание
+    // Выбор дня в календаре
     function selectCalendarDate(dateStr) {
       selectedDate.value = dateStr;
-      currentViewMode.value = 'day';
-    }
-
-    // Переключение между режимами «Один день» и «Вся неделя»
-    function toggleWeekView() {
-      currentViewMode.value = currentViewMode.value === 'week' ? 'day' : 'week';
     }
 
     // Предыдущий месяц в календаре
@@ -419,13 +359,19 @@ createApp({
           if (fullData?.data?.rasp) {
             applyScheduleItems(fullData.data.rasp);
           }
+          if (fullData?.data?.cachedAt) {
+            const cachedDate = new Date(fullData.data.cachedAt);
+            syncTimeText.value = `Обновлено в ${cachedDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+          }
         }
       } catch (e) {
         console.warn('Сетевой запрос расписания:', e);
       } finally {
         isSyncing.value = false;
-        const now = new Date();
-        syncTimeText.value = `Обновлено в ${now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+        if (!syncTimeText.value || syncTimeText.value === 'Загрузка...') {
+          const now = new Date();
+          syncTimeText.value = `Обновлено в ${now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+        }
       }
     }
 
@@ -439,13 +385,19 @@ createApp({
           if (data?.data?.rasp) {
             applyScheduleItems(data.data.rasp);
           }
+          if (data?.data?.cachedAt) {
+            const cachedDate = new Date(data.data.cachedAt);
+            syncTimeText.value = `Обновлено в ${cachedDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+          }
         }
       } catch (e) {
         console.warn('Ошибка принудительного обновления:', e);
       } finally {
         isSyncing.value = false;
-        const now = new Date();
-        syncTimeText.value = `Обновлено в ${now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+        if (!syncTimeText.value || syncTimeText.value === 'Загрузка...') {
+          const now = new Date();
+          syncTimeText.value = `Обновлено в ${now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`;
+        }
       }
     }
 
@@ -466,7 +418,6 @@ createApp({
     // 5. ИНИЦИАЛИЗАЦИЯ ПРИ ЗАПУСКЕ (MOUNTED)
     // --------------------------------------------------------------------------
     onMounted(() => {
-      // Восстанавливаем тему (Dark / Light)
       const savedTheme = localStorage.getItem('theme');
       if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
         isDark.value = true;
@@ -476,7 +427,6 @@ createApp({
         document.documentElement.classList.remove('dark');
       }
 
-      // Загружаем объединенное расписание
       loadSchedule();
     });
 
@@ -486,7 +436,6 @@ createApp({
     return {
       activeGroupFilter,
       selectedDate,
-      currentViewMode,
       calendarMonth,
       calendarMonthTitle,
       calendarDays,
@@ -496,7 +445,6 @@ createApp({
       syncTimeText,
       isDark,
       selectCalendarDate,
-      toggleWeekView,
       prevMonth,
       nextMonth,
       resetToToday,

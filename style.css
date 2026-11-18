@@ -20,25 +20,12 @@ body {
   overflow-y: scroll;
   overflow-x: hidden;
   /* Поддержка выреза (Notch / Dynamic Island) и жестов iPhone в режиме приложения */
-  padding-top: max(4rem, calc(3.5rem + env(safe-area-inset-top)));
+  padding-top: max(0.75rem, calc(0.5rem + env(safe-area-inset-top)));
   padding-bottom: max(1.5rem, calc(1rem + env(safe-area-inset-bottom)));
-  padding-left: env(safe-area-inset-left);
-  padding-right: env(safe-area-inset-right);
+  padding-left: max(0.5rem, env(safe-area-inset-left));
+  padding-right: max(0.5rem, env(safe-area-inset-right));
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;
-}
-
-/* Полная фиксация шапки с учетом челки/острова iPhone */
-header.app-header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: calc(3.5rem + env(safe-area-inset-top));
-  padding-top: env(safe-area-inset-top);
-  z-index: 50;
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
 }
 
 /* Scrollbar */
@@ -124,13 +111,7 @@ header.app-header {
   color: #c7d2fe;
 }
 
-/* Подсветка недели */
-.cal-day-cell.week-highlight:not(.selected) {
-  background-color: rgba(99, 102, 241, 0.08);
-}
-.dark .cal-day-cell.week-highlight:not(.selected) {
-  background-color: rgba(99, 102, 241, 0.16);
-}
+
 
 .cal-dots-container {
   display: flex;
