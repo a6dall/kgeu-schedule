@@ -1,0 +1,157 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+:root {
+  --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
+html {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+/* Полная фиксация шапки против любых дерганий при скролле */
+header.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3.5rem; /* 56px */
+  z-index: 50;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.45);
+}
+
+/* Card hover без рывков */
+.schedule-card {
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+.schedule-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.08);
+}
+.dark .schedule-card:hover {
+  box-shadow: 0 10px 24px -6px rgba(0, 0, 0, 0.45);
+}
+
+/* Pulse animation for live pair */
+@keyframes live-pulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.live-badge {
+  animation: live-pulse 2s infinite;
+}
+
+/* Calendar styling (без рамок) */
+.cal-day-cell {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding-top: 4px;
+  position: relative;
+  border-radius: 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.cal-day-cell:hover:not(.empty-cell) {
+  background-color: rgba(99, 102, 241, 0.12);
+  color: #4f46e5;
+}
+.dark .cal-day-cell:hover:not(.empty-cell) {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: #a5b4fc;
+}
+
+.cal-day-cell.selected {
+  background-color: #4f46e5 !important;
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35);
+}
+
+/* Сегодня в календаре */
+.cal-day-cell.today:not(.selected) {
+  background-color: rgba(99, 102, 241, 0.14);
+  color: #4f46e5;
+  font-weight: 800;
+}
+.dark .cal-day-cell.today:not(.selected) {
+  background-color: rgba(99, 102, 241, 0.25);
+  color: #c7d2fe;
+}
+
+/* Подсветка недели */
+.cal-day-cell.week-highlight:not(.selected) {
+  background-color: rgba(99, 102, 241, 0.08);
+}
+.dark .cal-day-cell.week-highlight:not(.selected) {
+  background-color: rgba(99, 102, 241, 0.16);
+}
+
+.cal-dots-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  position: absolute;
+  bottom: 3.5px;
+  left: 2px;
+  right: 2px;
+  max-width: calc(100% - 4px);
+  pointer-events: none;
+}
+
+.cal-dot {
+  width: 4.5px;
+  height: 4.5px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+/* Dot colors */
+.cal-dot-lecture { background-color: #10b981; }
+.cal-dot-lab { background-color: #a855f7; }
+.cal-dot-practice { background-color: #f59e0b; }
+.cal-dot-default { background-color: #6366f1; }
+
+.cal-day-cell.selected .cal-dot {
+  filter: brightness(1.2);
+  box-shadow: 0 0 1px 1px rgba(255, 255, 255, 0.6);
+}

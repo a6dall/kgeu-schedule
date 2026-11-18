@@ -1,0 +1,9 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Кэш-файлы расписания (генерируются автоматически сервером)
+data/schedule_semester_*.json
+!data/schedule_sample.json
+!data/todo_state.json

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Расписание занятий</title>
+  
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="style.css?v=3.0">
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 min-h-screen pt-16 transition-colors duration-200">
+
+  <!-- Фиксированная верхняя шапка (не дергается при скролле) -->
+  <header class="app-header bg-white/95 dark:bg-slate-900/95 backdrop-blur-md shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between gap-4">
+      
+      <!-- Заголовок -->
+      <div>
+        <h1 class="text-base font-extrabold text-slate-900 dark:text-white leading-none tracking-tight">
+          Расписание
+        </h1>
+      </div>
+
+      <!-- Действия: Статус обновления + Кнопка обновить + Тема -->
+      <div class="flex items-center gap-3">
+        
+        <!-- Время обновления в header -->
+        <span id="sync-status" class="text-xs text-slate-500 dark:text-slate-400 font-medium">
+          Загрузка...
+        </span>
+
+        <!-- Кнопка обновить -->
+        <button 
+          id="refresh-btn"
+          onclick="manualRefresh()" 
+          title="Синхронизировать с сайтом"
+          class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+        >
+          <svg id="refresh-icon" class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span class="hidden sm:inline">Обновить</span>
+        </button>
+
+        <!-- Переключатель темы -->
+        <button 
+          onclick="toggleTheme()" 
+          title="Сменить тему" 
+          class="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 bg-slate-100 dark:bg-slate-800 transition"
+        >
+          <svg class="w-4 h-4 block dark:hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+          <svg class="w-4 h-4 hidden dark:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Основной контент -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      
+      <!-- ЛЕВАЯ КОЛОНКА: Календарь + Фильтр типов -->
+      <aside class="lg:col-span-5 xl:col-span-4 space-y-5">
+        
+        <!-- Календарь -->
+        <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm">
+          
+          <!-- Шапка календаря -->
+          <div class="flex items-center justify-between mb-4">
+            <h3 id="calendar-month-title" class="font-bold text-sm text-slate-900 dark:text-white capitalize">
+              Октябрь 2026
+            </h3>
+            
+            <div class="flex items-center gap-1">
+              <button onclick="resetToToday()" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition">
+                Сегодня
+              </button>
+              <button onclick="prevMonth()" title="Предыдущий месяц" class="p-1 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+              </button>
+              <button onclick="nextMonth()" title="Следующий месяц" class="p-1 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Дни недели календаря (Пн - Вс) -->
+          <div class="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-slate-400 mb-2">
+            <span>Пн</span>
+            <span>Вт</span>
+            <span>Ср</span>
+            <span>Чт</span>
+            <span>Пт</span>
+            <span class="text-rose-400">Сб</span>
+            <span class="text-rose-400">Вс</span>
+          </div>
+
+          <!-- Сетка чисел месяца с цветными точками всех пар дня -->
+          <div id="calendar-grid" class="grid grid-cols-7 gap-1">
+            <!-- Генерируется из app.js -->
+          </div>
+
+          <!-- Кнопка "Показать неделю" -->
+          <div class="mt-4 pt-3">
+            <button 
+              id="toggle-week-btn"
+              onclick="toggleWeekView()" 
+              class="w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              <span id="toggle-week-btn-text">Показать всю неделю</span>
+            </button>
+          </div>
+
+        </div>
+
+        <!-- Фильтр по типам занятий -->
+        <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm space-y-3">
+          <span class="text-xs font-bold text-slate-400 uppercase tracking-wider">
+            Тип занятий
+          </span>
+          <div class="grid grid-cols-2 gap-2 text-xs font-semibold">
+            <button onclick="setTypeFilter('all')" data-type="all" class="type-filter-btn py-2 px-3 rounded-xl bg-indigo-600 text-white transition text-left flex items-center justify-between">
+              <span>Все типы</span>
+            </button>
+            <button onclick="setTypeFilter('lecture')" data-type="lecture" class="type-filter-btn py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition text-left flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Лекции</span>
+            </button>
+            <button onclick="setTypeFilter('lab')" data-type="lab" class="type-filter-btn py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition text-left flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-purple-500"></span>
+              <span>Лабораторные</span>
+            </button>
+            <button onclick="setTypeFilter('practice')" data-type="practice" class="type-filter-btn py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition text-left flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span>Практики</span>
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+      <!-- ПРАВАЯ КОЛОНКА: Расписание занятий на день / неделю -->
+      <section class="lg:col-span-7 xl:col-span-8 space-y-4">
+        
+        <!-- Заголовочная карточка правого блока (день, дата и кнопка добавления заметки) -->
+        <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm flex items-center justify-between gap-3">
+          <h2 id="current-view-title" class="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white capitalize truncate">
+            Понедельник - 19:10:2026
+          </h2>
+          <button 
+            onclick="openAddDayNoteModal()" 
+            class="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            <span>+ Заметка на день</span>
+          </button>
+        </div>
+
+        <!-- Контейнер заметок на выбранный день -->
+        <div id="day-notes-container" class="hidden"></div>
+
+        <!-- Контейнер карточек расписания -->
+        <div id="schedule-cards-container" class="space-y-3">
+          <!-- Генерируется из app.js -->
+        </div>
+
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Модальное окно добавления/редактирования заметки или лабы -->
+  <div id="note-modal" class="fixed inset-0 z-50 hidden bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-900 rounded-3xl p-6 w-full max-w-md shadow-2xl border border-slate-100 dark:border-slate-800 transition-all">
+      <div class="flex items-center justify-between mb-4">
+        <h3 id="note-modal-title" class="text-base font-bold text-slate-900 dark:text-white">
+          Добавить задачу / лабу
+        </h3>
+        <button type="button" onclick="closeNoteModal()" class="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <form id="note-modal-form" onsubmit="handleNoteModalSubmit(event)" class="space-y-4">
+        <input type="hidden" id="note-modal-mode" value="add">
+        <input type="hidden" id="note-modal-target-type" value="pair">
+        <input type="hidden" id="note-modal-id" value="">
+        <input type="hidden" id="note-modal-pairkey" value="">
+        <input type="hidden" id="note-modal-date" value="">
+
+        <div>
+          <label for="note-modal-input" class="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+            Текст задачи или лабораторной
+          </label>
+          <input 
+            type="text" 
+            id="note-modal-input" 
+            required 
+            placeholder="Например: Лабораторная работа №3 — сдать отчет"
+            class="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition"
+          >
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-2">
+          <button 
+            type="button" 
+            onclick="closeNoteModal()" 
+            class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          >
+            Отмена
+          </button>
+          <button 
+            type="submit" 
+            class="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-sm shadow-indigo-500/20"
+          >
+            Сохранить
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js?v=4.0"></script>
+</body>
+</html>
