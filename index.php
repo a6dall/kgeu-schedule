@@ -2,16 +2,8 @@
 /**
  * ==============================================================================
  * КГЭУ Расписание — Бэкенд на чистом PHP + Шаблон Vue.js 3
- * Объединённое расписание групп: ПМ-1-24 (14493) и ЦК-ИЦС-3 (15006)
+ * Объединённое расписание групп: ПМ-1-24 (Синий) и ЦК-ИЦС-3 (Оранжевый)
  * ==============================================================================
- * 
- * Назначение этого файла:
- *  1. Запуск встроенного веб-сервера PHP при вызове `php index.php` (для Mac и Docker).
- *  2. Раздача статики (стили style.css, клиентский код app.js) с cache-busting.
- *  3. REST API эндпоинт /api/full-schedule:
- *     - Скачивает и кэширует расписание обеих групп (ПМ-1-24 + ЦК-ИЦС-3) с kabinet.kgeu.ru.
- *     - Объединяет пары в единый хронологический поток с маркировкой группы.
- *  4. Отдача адаптивной HTML-разметки на Vue.js 3.
  */
 
 declare(strict_types=1);
@@ -20,24 +12,21 @@ declare(strict_types=1);
 // 1. ЗАПУСК ИЗ ТЕРМИНАЛА (CLI-РЕЖИМ)
 // ------------------------------------------------------------------------------
 if (php_sapi_name() === 'cli') {
-    // Читаем переменные окружения HOST и PORT (по умолчанию 0.0.0.0 или localhost:8000)
     $host = getenv('HOST') ?: (PHP_OS_FAMILY === 'Darwin' ? 'localhost' : '0.0.0.0');
     $port = (int)(getenv('PORT') ?: 8000);
     $url = "http://{$host}:{$port}";
 
     echo "\033[1;32m========================================================\033[0m\n";
-    echo "\033[1;36m🎓 Сервер расписания КГЭУ (ПМ-1-24 + ЦК-ИЦС-3)\033[0m\n";
+    echo "\033[1;34m🎓 Расписание КГЭУ: ПМ-1-24 (Синий) + ЦК-ИЦС-3 (Оранжевый)\033[0m\n";
     echo "⚡ Адрес приложения: {$url}\n";
     echo "🔄 API проксирование kabinet.kgeu.ru активно\n";
     echo "❌ Для остановки нажмите Ctrl + C\n";
     echo "\033[1;32m========================================================\033[0m\n\n";
 
-    // Автоматическое открытие в браузере Safari/Chrome на macOS
     if (PHP_OS_FAMILY === 'Darwin') {
         @exec("open " . escapeshellarg($url) . " > /dev/null 2>&1 &");
     }
 
-    // Запускаем встроенный сервер PHP и передаем управление текущему файлу
     passthru(PHP_BINARY . " -S {$host}:{$port} " . escapeshellarg(__FILE__));
     exit;
 }
@@ -51,7 +40,6 @@ $path = $parsedUrl['path'] ?? '/';
 $queryString = $parsedUrl['query'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
-// Базовые заголовки: CORS (разрешаем запросы) и Cache-Control (отключаем кэш для мгновенных правок)
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
@@ -76,7 +64,6 @@ if ($path === '/app.js' && file_exists(__DIR__ . '/app.js')) {
     exit;
 }
 
-// Папка с данными и файлами кэша
 $dataDir = __DIR__ . '/data';
 if (!is_dir($dataDir)) {
     @mkdir($dataDir, 0755, true);
@@ -135,7 +122,6 @@ if ($path === '/api/full-schedule') {
         }
 
         if (!$loadedFromCache) {
-            // Быстрое параллельное скачивание всех 18 недель через curl_multi
             $mh = curl_multi_init();
             $handles = [];
             foreach ($mondays as $m) {
@@ -222,7 +208,7 @@ if ($path === '/api/full-schedule') {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Расписание занятий КГЭУ — ПМ-1-24 и ЦК-ИЦС-3</title>
   
-  <!-- Tailwind CSS для красивого адаптивного оформления -->
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -230,7 +216,7 @@ if ($path === '/api/full-schedule') {
       theme: {
         extend: {
           colors: {
-            brand: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca' }
+            brand: { 50: '#eff6ff', 100: '#dbeafe', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8' }
           }
         }
       }
@@ -238,10 +224,9 @@ if ($path === '/api/full-schedule') {
   </script>
   <link rel="stylesheet" href="style.css?v=<?= filemtime(__DIR__ . '/style.css') ?>">
 
-  <!-- Vue.js 3 via CDN (быстрая библиотека реактивного UI без нужды в Node.js) -->
+  <!-- Vue.js 3 via CDN -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
   <style>
-    /* Прячем нескомпилированные теги Vue до момента монтирования */
     [v-cloak] { display: none; }
   </style>
 </head>
@@ -259,10 +244,10 @@ if ($path === '/api/full-schedule') {
             Расписание КГЭУ
           </h1>
           <div class="flex items-center gap-1.5">
-            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
               ПМ-1-24
             </span>
-            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20">
+            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-500/10 text-orange-600 dark:text-orange-400 border border-orange-500/30">
               ЦК-ИЦС-3
             </span>
           </div>
@@ -274,14 +259,14 @@ if ($path === '/api/full-schedule') {
             {{ syncTimeText }}
           </span>
 
-          <!-- Кнопка принудительного обновления расписания -->
+          <!-- Кнопка обновления расписания -->
           <button 
             type="button"
             @click="manualRefresh()" 
             title="Синхронизировать с сайтом kabinet.kgeu.ru"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
           >
-            <svg class="w-3.5 h-3.5 text-indigo-500" :class="{ 'animate-spin': isSyncing }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" :class="{ 'animate-spin': isSyncing }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
             <span class="hidden sm:inline">Обновить</span>
@@ -294,9 +279,7 @@ if ($path === '/api/full-schedule') {
             title="Переключить тему"
             class="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
           >
-            <!-- Иконка солнца -->
             <svg v-if="isDark" class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-            <!-- Иконка луны -->
             <svg v-else class="w-4 h-4 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
           </button>
         </div>
@@ -320,7 +303,7 @@ if ($path === '/api/full-schedule') {
               </h3>
               
               <div class="flex items-center gap-1">
-                <button type="button" @click="resetToToday()" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition">
+                <button type="button" @click="resetToToday()" class="px-2.5 py-1 text-[11px] font-semibold rounded-lg text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 transition">
                   Сегодня
                 </button>
                 <button type="button" @click="prevMonth()" title="Предыдущий месяц" class="p-1 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
@@ -350,29 +333,32 @@ if ($path === '/api/full-schedule') {
                   @click="selectCalendarDate(d.dateStr)"
                   :class="[
                     'aspect-square rounded-xl p-1 flex flex-col items-center justify-center text-xs transition relative',
-                    d.isSelected ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-500/30' : 
-                    (d.isWeekHighlighted ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'),
-                    (d.isToday && !d.isSelected) ? 'ring-2 ring-indigo-500 ring-offset-1 dark:ring-offset-slate-900 font-bold' : ''
+                    d.isSelected ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-500/30' : 
+                    (d.isWeekHighlighted ? 'bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 font-semibold' : 'hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'),
+                    (d.isToday && !d.isSelected) ? 'ring-2 ring-blue-500 ring-offset-1 dark:ring-offset-slate-900 font-bold' : ''
                   ]"
                 >
                   <span>{{ d.dayNumber }}</span>
-                  <!-- Цветные точки наличия занятий -->
-                  <div v-if="d.hasLecture || d.hasLab || d.hasPractice || d.hasExam" class="flex items-center justify-center gap-0.5 mt-0.5">
-                    <span v-if="d.hasLecture" class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                    <span v-if="d.hasLab" class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>
-                    <span v-if="d.hasPractice" class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
-                    <span v-if="d.hasExam" class="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                  <!-- Точки групп (Синяя: ПМ-1-24, Оранжевая: ЦК-ИЦС-3) -->
+                  <div v-if="d.hasPm || d.hasCk" class="flex items-center justify-center gap-1 mt-0.5">
+                    <span v-if="d.hasPm" class="w-1.5 h-1.5 rounded-full bg-blue-600" title="ПМ-1-24"></span>
+                    <span v-if="d.hasCk" class="w-1.5 h-1.5 rounded-full bg-orange-500" title="ЦК-ИЦС-3"></span>
                   </div>
                 </button>
               </template>
             </div>
 
-            <!-- Легенда и кнопка переключения на всю неделю -->
+            <!-- Легенда групп и кнопка переключения на всю неделю -->
             <div class="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
-              <div class="flex items-center justify-between text-[11px] text-slate-400 font-medium">
-                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Лекция</span>
-                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-purple-500"></span>Лабораторная</span>
-                <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Практика</span>
+              <div class="flex items-center justify-center gap-4 text-[11px] text-slate-500 font-semibold">
+                <span class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-blue-600"></span>
+                  <span>ПМ-1-24</span>
+                </span>
+                <span class="flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-orange-500"></span>
+                  <span>ЦК-ИЦС-3</span>
+                </span>
               </div>
 
               <!-- Переключатель режима "День" / "Вся неделя" -->
@@ -381,7 +367,7 @@ if ($path === '/api/full-schedule') {
                 @click="toggleWeekView()" 
                 :class="[
                   'w-full py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2',
-                  currentViewMode === 'week' ? 'bg-indigo-600 text-white' : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50'
+                  currentViewMode === 'week' ? 'bg-blue-600 text-white shadow-sm' : 'bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50'
                 ]"
               >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
@@ -396,98 +382,56 @@ if ($path === '/api/full-schedule') {
         <!-- ПРАВАЯ КОЛОНКА: Сетка расписания пар -->
         <section class="lg:col-span-7 xl:col-span-8 space-y-4">
           
-          <!-- Шапка правого блока: Заголовок дня + Переключатель групп + Фильтры по типу -->
-          <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <!-- Шапка правого блока: Заголовок дня + Переключатель групп -->
+          <div class="bg-white dark:bg-slate-900 rounded-3xl p-5 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white capitalize leading-tight">
                 {{ currentViewTitle }}
               </h2>
             </div>
 
-            <div class="flex items-center gap-2 shrink-0 flex-wrap">
-              
-              <!-- Переключатель групп (Табы: Все / ПМ-1-24 / ЦК-ИЦС-3) -->
-              <div class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl">
-                <button 
-                  type="button" 
-                  @click="selectGroupFilter('all')"
-                  :class="[
-                    'px-2.5 py-1 rounded-xl text-xs font-bold transition',
-                    activeGroupFilter === 'all' 
-                      ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm' 
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  ]"
-                >
-                  Все группы
-                </button>
+            <!-- Переключатель групп (Табы: Все группы / ПМ-1-24 / ЦК-ИЦС-3) -->
+            <div class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl shrink-0">
+              <button 
+                type="button" 
+                @click="selectGroupFilter('all')"
+                :class="[
+                  'px-3 py-1.5 rounded-xl text-xs font-bold transition',
+                  activeGroupFilter === 'all' 
+                    ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm' 
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ]"
+              >
+                Все группы
+              </button>
 
-                <button 
-                  type="button" 
-                  @click="selectGroupFilter('14493')"
-                  :class="[
-                    'px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1',
-                    activeGroupFilter === '14493' 
-                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/20' 
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  ]"
-                >
-                  <span class="w-1.5 h-1.5 rounded-full" :class="activeGroupFilter === '14493' ? 'bg-white' : 'bg-indigo-500'"></span>
-                  <span>ПМ-1-24</span>
-                </button>
+              <button 
+                type="button" 
+                @click="selectGroupFilter('14493')"
+                :class="[
+                  'px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5',
+                  activeGroupFilter === '14493' 
+                    ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20' 
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ]"
+              >
+                <span class="w-1.5 h-1.5 rounded-full" :class="activeGroupFilter === '14493' ? 'bg-white' : 'bg-blue-600'"></span>
+                <span>ПМ-1-24</span>
+              </button>
 
-                <button 
-                  type="button" 
-                  @click="selectGroupFilter('15006')"
-                  :class="[
-                    'px-2.5 py-1 rounded-xl text-xs font-bold transition flex items-center gap-1',
-                    activeGroupFilter === '15006' 
-                      ? 'bg-teal-600 text-white shadow-sm shadow-teal-500/20' 
-                      : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-                  ]"
-                >
-                  <span class="w-1.5 h-1.5 rounded-full" :class="activeGroupFilter === '15006' ? 'bg-white' : 'bg-teal-500'"></span>
-                  <span>ЦК-ИЦС-3</span>
-                </button>
-              </div>
-
-              <!-- Раскрывающаяся кнопка-плашка "Фильтры по типу" -->
-              <div id="filters-container" class="relative">
-                <button 
-                  type="button"
-                  @click.stop="toggleFiltersDropdown()" 
-                  class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-                >
-                  <svg class="w-3.5 h-3.5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/></svg>
-                  <span>{{ currentFilterLabel }}</span>
-                  <svg class="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
-                </button>
-
-                <!-- Отдельная выпадающая плашка фильтров -->
-                <div v-show="isFiltersOpen" class="absolute right-0 z-30 mt-2 w-48 origin-top-right rounded-2xl bg-white dark:bg-slate-900 p-2 shadow-2xl border border-slate-100 dark:border-slate-800">
-                  <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-3 py-1.5">
-                    Тип занятий
-                  </div>
-                  <div class="space-y-1 text-xs font-semibold">
-                    <button type="button" @click="selectFilter('all')" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-                      <span>Все типы</span>
-                      <span v-if="activeTypeFilter === 'all'" class="text-indigo-500 font-bold">✓</span>
-                    </button>
-                    <button type="button" @click="selectFilter('lecture')" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-                      <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Лекции</span></span>
-                      <span v-if="activeTypeFilter === 'lecture'" class="text-indigo-500 font-bold">✓</span>
-                    </button>
-                    <button type="button" @click="selectFilter('lab')" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-                      <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-purple-500"></span><span>Лабораторные</span></span>
-                      <span v-if="activeTypeFilter === 'lab'" class="text-indigo-500 font-bold">✓</span>
-                    </button>
-                    <button type="button" @click="selectFilter('practice')" class="w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-                      <span class="flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber-500"></span><span>Практики</span></span>
-                      <span v-if="activeTypeFilter === 'practice'" class="text-indigo-500 font-bold">✓</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
+              <button 
+                type="button" 
+                @click="selectGroupFilter('15006')"
+                :class="[
+                  'px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5',
+                  activeGroupFilter === '15006' 
+                    ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/20' 
+                    : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ]"
+              >
+                <span class="w-1.5 h-1.5 rounded-full" :class="activeGroupFilter === '15006' ? 'bg-white' : 'bg-orange-500'"></span>
+                <span>ЦК-ИЦС-3</span>
+              </button>
             </div>
           </div>
 
@@ -495,16 +439,16 @@ if ($path === '/api/full-schedule') {
           <div class="space-y-3.5">
             <!-- Заглушка, если в этот день пар нет -->
             <div v-if="!displayedPairs || displayedPairs.length === 0" class="text-center py-16 px-6 bg-white dark:bg-slate-900 rounded-3xl shadow-sm">
-              <div class="w-14 h-14 mx-auto mb-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl flex items-center justify-center text-indigo-500">
+              <div class="w-14 h-14 mx-auto mb-3 bg-blue-50 dark:bg-blue-950/40 rounded-2xl flex items-center justify-center text-blue-600">
                 <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4M12 20V4"/></svg>
               </div>
               <h3 class="text-base font-bold text-slate-800 dark:text-slate-100 mb-1">
-                {{ currentViewMode === 'day' ? 'В этот день пар нет' : 'Занятий по выбранным фильтрам не найдено' }}
+                {{ currentViewMode === 'day' ? 'В этот день пар нет' : 'Занятий не найдено' }}
               </h3>
               <p class="text-xs text-slate-400">Свободный день или выходной</p>
             </div>
 
-            <!-- Карточка пары (чистая, информативная, без чекбоксов) -->
+            <!-- Карточка пары (Цвет полоски и бейдж соответствуют группе) -->
             <article 
               v-for="pair in displayedPairs" 
               :key="getPairKey(pair)"
@@ -513,18 +457,16 @@ if ($path === '/api/full-schedule') {
                 isPairCurrent(pair.датаНачала, pair.датаОкончания) ? 'ring-2 ring-emerald-500' : ''
               ]"
             >
-              <!-- Левая цветная полоса типа пары -->
+              <!-- Левая цветная полоса группы: Синяя для ПМ-1-24, Оранжевая для ЦК-ИЦС-3 -->
               <div 
                 :class="[
                   'absolute left-0 top-0 bottom-0 w-1.5',
-                  parseDiscipline(pair.дисциплина).typeKey === 'lecture' ? 'bg-emerald-500' :
-                  (parseDiscipline(pair.дисциплина).typeKey === 'lab' ? 'bg-purple-500' :
-                  (parseDiscipline(pair.дисциплина).typeKey === 'practice' ? 'bg-amber-500' : 'bg-indigo-500'))
+                  (String(pair.groupId) === '15006' || pair.groupName === 'ЦК-ИЦС-3') ? 'bg-orange-500' : 'bg-blue-600'
                 ]"
               ></div>
 
               <div>
-                <!-- Верхняя строка: Номер пары, Время, Статус "Сейчас", Группа, Подгруппа, Тип -->
+                <!-- Верхняя строка: Номер пары, Время, Статус "Сейчас", Группа, Подгруппа -->
                 <div class="flex items-center justify-between gap-2 mb-2 pl-2">
                   <div class="flex items-center gap-2">
                     <span class="inline-flex items-center justify-center w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200">
@@ -539,41 +481,37 @@ if ($path === '/api/full-schedule') {
                     </span>
                   </div>
 
-                  <!-- Метки: ГРУППА + Подгруппа + Тип пары -->
+                  <!-- Метка группы + номер подгруппы -->
                   <div class="flex items-center gap-1.5 flex-wrap justify-end">
                     
-                    <!-- Бейдж ГРУППЫ: ПМ-1-24 (индиго) vs ЦК-ИЦС-3 (бирюзовый) -->
+                    <!-- Бейдж ГРУППЫ: Синий для ПМ-1-24, Оранжевый для ЦК-ИЦС-3 -->
                     <span 
                       :class="[
-                        'px-2 py-0.5 rounded-md text-[11px] font-extrabold border',
+                        'px-2.5 py-0.5 rounded-md text-[11px] font-extrabold border tracking-wide',
                         (String(pair.groupId) === '15006' || pair.groupName === 'ЦК-ИЦС-3')
-                          ? 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30'
-                          : 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30'
+                          ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/30'
+                          : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/30'
                       ]"
                     >
                       {{ pair.groupName || (String(pair.groupId) === '15006' ? 'ЦК-ИЦС-3' : 'ПМ-1-24') }}
                     </span>
 
-                    <span v-if="pair.номерПодгруппы && pair.номерПодгруппы > 0" class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                    <span v-if="pair.номерПодгруппы && pair.номерПодгруппы > 0" class="px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
                       {{ pair.номерПодгруппы }} п/г
-                    </span>
-
-                    <span :class="['px-2.5 py-0.5 rounded-md text-[11px] font-bold', parseDiscipline(pair.дисциплина).badgeClass]">
-                      {{ parseDiscipline(pair.дисциплина).type }}
                     </span>
                   </div>
                 </div>
 
-                <!-- Название предмета -->
+                <!-- Чистое название предмета (без лек/лаб/пр) -->
                 <h4 class="text-sm sm:text-base font-bold text-slate-900 dark:text-white leading-snug pl-2">
-                  {{ parseDiscipline(pair.дисциплина).title }}
+                  {{ cleanDisciplineTitle(pair.дисциплина) }}
                 </h4>
               </div>
 
               <!-- Преподаватель и Аудитория -->
               <div class="pt-3 mt-3 border-t border-slate-100/70 dark:border-slate-800/60 pl-2 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
                 <div class="flex items-center gap-1.5 truncate pr-3">
-                  <div class="w-5 h-5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 text-[10px] font-bold">
+                  <div class="w-5 h-5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center shrink-0 text-[10px] font-bold">
                     👤
                   </div>
                   <span class="font-medium text-slate-900 dark:text-slate-200 truncate">

@@ -1,13 +1,8 @@
 /**
  * ==============================================================================
  * КГЭУ Расписание — Клиентская часть на Vue.js 3
- * Объединённое расписание групп: ПМ-1-24 и ЦК-ИЦС-3
+ * Объединённое расписание: ПМ-1-24 (синий) и ЦК-ИЦС-3 (оранжевый)
  * ==============================================================================
- * 
- * Архитектура:
- *  - Vue 3 реактивно управляет отображением без перезагрузок страницы (SPA).
- *  - Чистый PHP бэкенд отдаёт объединённый поток пар по REST API (/api/full-schedule).
- *  - Каждая пара размечена бейджем своей группы (ПМ-1-24 или ЦК-ИЦС-3).
  */
 
 const { createApp, ref, computed, onMounted } = Vue;
@@ -51,61 +46,15 @@ function formatCustomWeekTitle(startDateStr, endDateStr) {
 }
 
 /**
- * Парсер строки дисциплины из API КГЭУ
- * Например: "лек Маркетинг ИТ-продуктов" -> { type: 'Лекция', typeKey: 'lecture', title: 'Маркетинг ИТ-продуктов' }
+ * Очищает название предмета от префиксов (лек, лаб, пр, зач, экз)
+ * Например: "лаб Программирование на Python" -> "Программирование на Python"
  */
-function parseDiscipline(rawName) {
-  if (!rawName) {
-    return { 
-      type: 'Занятие', 
-      typeKey: 'other', 
-      title: '—', 
-      badgeClass: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' 
-    };
-  }
-  const trimmed = String(rawName).trim();
-  if (trimmed.startsWith('лек ')) {
-    return {
-      type: 'Лекция',
-      typeKey: 'lecture',
-      title: trimmed.replace(/^лек\s+/, ''),
-      badgeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-    };
-  } else if (trimmed.startsWith('лаб ')) {
-    return {
-      type: 'Лабораторная',
-      typeKey: 'lab',
-      title: trimmed.replace(/^лаб\s+/, ''),
-      badgeClass: 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
-    };
-  } else if (trimmed.startsWith('пр ')) {
-    return {
-      type: 'Практика',
-      typeKey: 'practice',
-      title: trimmed.replace(/^пр\s+/, ''),
-      badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
-    };
-  } else if (trimmed.startsWith('зач ')) {
-    return {
-      type: 'Зачет',
-      typeKey: 'exam',
-      title: trimmed.replace(/^зач\s+/, ''),
-      badgeClass: 'bg-red-500/10 text-red-600 dark:text-red-400'
-    };
-  } else if (trimmed.startsWith('экз ')) {
-    return {
-      type: 'Экзамен',
-      typeKey: 'exam',
-      title: trimmed.replace(/^экз\s+/, ''),
-      badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
-    };
-  }
-  return {
-    type: 'Занятие',
-    typeKey: 'other',
-    title: trimmed,
-    badgeClass: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
-  };
+function cleanDisciplineTitle(rawName) {
+  if (!rawName) return '—';
+  return String(rawName)
+    .trim()
+    .replace(/^(лек|лаб|пр|зач|экз)\s+/iu, '')
+    .trim();
 }
 
 /** Уникальный ключ для идентификации пары в расписании */
@@ -159,14 +108,7 @@ createApp({
     // 1. РЕАКТИВНОЕ СОСТОЯНИЕ (STATE)
     // --------------------------------------------------------------------------
 
-    // Список отслеживаемых групп КГЭУ
-    const groupsList = ref([
-      { id: 'all', name: 'Все группы' },
-      { id: '14493', name: 'ПМ-1-24', badgeClass: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30' },
-      { id: '15006', name: 'ЦК-ИЦС-3', badgeClass: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/30' }
-    ]);
-
-    // Активный фильтр по группе: 'all' (обе группы вместе) | '14493' | '15006'
+    // Активный фильтр по группе: 'all' (все группы) | '14493' (ПМ-1-24) | '15006' (ЦК-ИЦС-3)
     const activeGroupFilter = ref('all');
 
     // Выбранная дата в формате YYYY-MM-DD (по умолчанию — сегодня)
@@ -174,9 +116,6 @@ createApp({
 
     // Режим отображения: 'day' (один день) или 'week' (вся неделя)
     const currentViewMode = ref('day');
-
-    // Активный фильтр по типу пары: 'all', 'lecture', 'lab', 'practice'
-    const activeTypeFilter = ref('all');
 
     // Месяц для левого календаря (объект Date)
     const calendarMonth = ref(new Date());
@@ -190,9 +129,6 @@ createApp({
 
     // Флаг тёмной темы оформления
     const isDark = ref(false);
-
-    // Открыта ли плашка с фильтрами по типам пар
-    const isFiltersOpen = ref(false);
 
     // --------------------------------------------------------------------------
     // 2. ВЫЧИСЛЯЕМЫЕ СВОЙСТВА (COMPUTED)
@@ -216,18 +152,7 @@ createApp({
       }
     });
 
-    // Текст на кнопке фильтра в зависимости от выбранного типа
-    const currentFilterLabel = computed(() => {
-      const labels = {
-        all: 'Фильтры',
-        lecture: 'Лекции',
-        lab: 'Лабораторные',
-        practice: 'Практики'
-      };
-      return labels[activeTypeFilter.value] || 'Фильтры';
-    });
-
-    // Генерация сетки дней для текущего месяца календаря
+    // Генерация сетки дней для текущего месяца календаря с точками групп
     const calendarDays = computed(() => {
       const year = calendarMonth.value.getFullYear();
       const month = calendarMonth.value.getMonth();
@@ -254,16 +179,17 @@ createApp({
         const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         let pairs = allPairsMap.value[dateStr] || [];
 
-        // Если активен фильтр по конкретной группе — учитываем его в календаре
+        // Если включен фильтр конкретной группы — фильтруем и точки в календаре
         if (activeGroupFilter.value !== 'all') {
           pairs = pairs.filter(p => String(p.groupId) === String(activeGroupFilter.value));
         }
 
-        // Собираем типы занятий для цветных точек
-        const typeSet = new Set();
+        let hasPm = false;
+        let hasCk = false;
+
         pairs.forEach(p => {
-          const disc = parseDiscipline(p.дисциплина);
-          typeSet.add(disc.typeKey);
+          if (String(p.groupId) === '14493' || p.groupName === 'ПМ-1-24') hasPm = true;
+          if (String(p.groupId) === '15006' || p.groupName === 'ЦК-ИЦС-3') hasCk = true;
         });
 
         days.push({
@@ -273,17 +199,15 @@ createApp({
           isSelected: selectedDate.value === dateStr,
           isWeekHighlighted: currentViewMode.value === 'week' && weekDates.includes(dateStr),
           isToday: dateStr === realToday,
-          hasLecture: typeSet.has('lecture'),
-          hasLab: typeSet.has('lab'),
-          hasPractice: typeSet.has('practice'),
-          hasExam: typeSet.has('exam')
+          hasPm,
+          hasCk
         });
       }
 
       return days;
     });
 
-    // Список пар, отфильтрованный по выбранной дате/неделе, группе и типу
+    // Список пар, отфильтрованный по выбранной дате/неделе и группе
     const displayedPairs = computed(() => {
       let rawPairs = [];
 
@@ -309,14 +233,6 @@ createApp({
         if (!unique.has(k)) unique.set(k, p);
       });
       let list = Array.from(unique.values());
-
-      // Фильтрация по типу (Лекция, Лабораторная, Практика)
-      if (activeTypeFilter.value !== 'all') {
-        list = list.filter(p => {
-          const disc = parseDiscipline(p.дисциплина);
-          return disc.typeKey === activeTypeFilter.value;
-        });
-      }
 
       // Сортировка по времени начала
       list.sort((a, b) => {
@@ -373,17 +289,6 @@ createApp({
       activeGroupFilter.value = String(groupId);
     }
 
-    // Открытие/закрытие выпадающей плашки фильтров по типу пар
-    function toggleFiltersDropdown() {
-      isFiltersOpen.value = !isFiltersOpen.value;
-    }
-
-    // Выбор фильтра типа занятий (все, лекции, лабы, практики)
-    function selectFilter(filterType) {
-      activeTypeFilter.value = filterType;
-      isFiltersOpen.value = false;
-    }
-
     // Переключение темы (светлая / тёмная)
     function toggleTheme() {
       isDark.value = !isDark.value;
@@ -404,7 +309,7 @@ createApp({
     async function loadSchedule() {
       isSyncing.value = true;
 
-      // Сначала пробуем быстро прочитать локальные кэши обеих групп
+      // Быстрое чтение локальных кэшей
       try {
         const [c14493, c15006] = await Promise.allSettled([
           fetch('./data/schedule_semester_14493.json').then(r => r.ok ? r.json() : null),
@@ -497,14 +402,6 @@ createApp({
         document.documentElement.classList.remove('dark');
       }
 
-      // Закрытие выпадающего меню фильтров при клике вне него
-      document.addEventListener('click', (e) => {
-        const container = document.getElementById('filters-container');
-        if (container && !container.contains(e.target)) {
-          isFiltersOpen.value = false;
-        }
-      });
-
       // Загружаем объединенное расписание
       loadSchedule();
     });
@@ -513,32 +410,26 @@ createApp({
     // 6. ВОЗВРАТ ПЕРЕМЕННЫХ И МЕТОДОВ В ШАБЛОН HTML
     // --------------------------------------------------------------------------
     return {
-      groupsList,
       activeGroupFilter,
       selectedDate,
       currentViewMode,
-      activeTypeFilter,
       calendarMonth,
       calendarMonthTitle,
       calendarDays,
       currentViewTitle,
-      currentFilterLabel,
       displayedPairs,
       isSyncing,
       syncTimeText,
       isDark,
-      isFiltersOpen,
       selectCalendarDate,
       toggleWeekView,
       prevMonth,
       nextMonth,
       resetToToday,
       selectGroupFilter,
-      toggleFiltersDropdown,
-      selectFilter,
       toggleTheme,
       manualRefresh,
-      parseDiscipline,
+      cleanDisciplineTitle,
       isPairCurrent,
       getPairKey
     };
