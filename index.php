@@ -306,7 +306,7 @@ if ($path === '/api/full-schedule') {
       }
     }
   </script>
-  <link rel="stylesheet" href="style.css?v=7.0">
+  <link rel="stylesheet" href="style.css?v=<?= filemtime(__DIR__ . '/style.css') ?>">
 
   <!-- Vue.js 3 via CDN (быстрая библиотека реактивного UI без нужды в Node.js) -->
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -514,7 +514,7 @@ if ($path === '/api/full-schedule') {
           </div>
 
           <!-- Блок общих заметок на текущий день -->
-          <div v-if="dayGeneralNotes.length > 0" class="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-indigo-100/60 dark:border-indigo-950/40">
+          <div v-if="dayGeneralNotes && dayGeneralNotes.length > 0" class="bg-white dark:bg-slate-900 rounded-2xl p-4 shadow-sm border border-indigo-100/60 dark:border-indigo-950/40">
             <div class="flex items-center justify-between mb-2 pb-2 border-b border-slate-100 dark:border-slate-800">
               <span class="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
                 <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
@@ -549,7 +549,7 @@ if ($path === '/api/full-schedule') {
           <!-- Список карточек расписания -->
           <div class="space-y-3.5">
             <!-- Заглушка, если в этот день пар нет -->
-            <div v-if="displayedPairs.length === 0" class="text-center py-16 px-6 bg-white dark:bg-slate-900 rounded-3xl shadow-sm">
+            <div v-if="!displayedPairs || displayedPairs.length === 0" class="text-center py-16 px-6 bg-white dark:bg-slate-900 rounded-3xl shadow-sm">
               <div class="w-14 h-14 mx-auto mb-3 bg-indigo-50 dark:bg-indigo-950/40 rounded-2xl flex items-center justify-center text-indigo-500">
                 <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 12H4M12 20V4"/></svg>
               </div>
@@ -645,27 +645,27 @@ if ($path === '/api/full-schedule') {
 
                 <div class="space-y-1">
                   <!-- Стандартная лаба по расписанию (БЕЗ TODO:) -->
-                  <template v-if="getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate) && !getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).isDeleted">
+                  <template v-if="getLabInfo(pair) && !getLabInfo(pair).isDeleted">
                     <div class="flex items-center justify-between group py-1 px-2 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800/60 transition">
                       <label class="flex items-center gap-2.5 cursor-pointer select-none flex-1 min-w-0 pr-2">
                         <input 
                           type="checkbox" 
-                          :checked="getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).isChecked"
-                          @change="toggleTodoCheckbox(getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).todoKey, $event.target.checked)"
+                          :checked="getLabInfo(pair).isChecked"
+                          @change="toggleTodoCheckbox(getLabInfo(pair).todoKey, $event.target.checked)"
                           class="w-4 h-4 rounded text-indigo-600 focus:ring-0 accent-indigo-600 cursor-pointer transition shrink-0"
                         >
-                        <span :class="['text-xs font-semibold truncate transition', getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).isChecked ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200']">
-                          {{ getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).label }}
+                        <span :class="['text-xs font-semibold truncate transition', getLabInfo(pair).isChecked ? 'line-through text-slate-400 dark:text-slate-500' : 'text-slate-700 dark:text-slate-200']">
+                          {{ getLabInfo(pair).label }}
                         </span>
                       </label>
                       
                       <div class="flex items-center gap-1 shrink-0">
-                        <span :class="['text-[10px] font-bold px-1.5 py-0.5 rounded', getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).isChecked ? 'bg-emerald-500/10 text-emerald-600' : 'bg-purple-500/10 text-purple-600']">
-                          {{ getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).isChecked ? 'Сдано ✓' : 'К сдаче' }}
+                        <span :class="['text-[10px] font-bold px-1.5 py-0.5 rounded', getLabInfo(pair).isChecked ? 'bg-emerald-500/10 text-emerald-600' : 'bg-purple-500/10 text-purple-600']">
+                          {{ getLabInfo(pair).isChecked ? 'Сдано ✓' : 'К сдаче' }}
                         </span>
                         <button 
                           type="button" 
-                          @click="openEditDefaultLabModal(getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).todoKey, getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).label)" 
+                          @click="openEditDefaultLabModal(getLabInfo(pair).todoKey, getLabInfo(pair).label)" 
                           title="Переименовать" 
                           class="p-1 rounded text-slate-400 hover:text-indigo-600"
                         >
@@ -673,7 +673,7 @@ if ($path === '/api/full-schedule') {
                         </button>
                         <button 
                           type="button" 
-                          @click="deleteDefaultLab(getLabInfo(parseDiscipline(pair.дисциплина).title, pair.дата ? pair.дата.split('T')[0] : selectedDate).todoKey)" 
+                          @click="deleteDefaultLab(getLabInfo(pair).todoKey)" 
                           title="Удалить" 
                           class="p-1 rounded text-slate-400 hover:text-rose-600"
                         >
@@ -769,6 +769,6 @@ if ($path === '/api/full-schedule') {
   </div> <!-- /#app -->
 
   <!-- Подключение клиентской логики на Vue.js 3 -->
-  <script src="app.js?v=7.0"></script>
+  <script src="app.js?v=<?= filemtime(__DIR__ . '/app.js') ?>"></script>
 </body>
 </html>

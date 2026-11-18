@@ -5,12 +5,193 @@
  * 
  * Архитектура:
  *  - Vue 3 управляет всем интерфейсом реактивно: когда меняются данные (state),
- *    Vue сам моментально обновляет нужные элементы в браузере без перезагрузки страниц.
+ *    Vue сам моментально обновляет нужные элементы в браузере без перезагрузки страниц (SPA).
  *  - Серверная часть (PHP) поставляет данные через REST API (/api/full-schedule, /api/todo).
  */
 
 const { createApp, ref, computed, onMounted } = Vue;
 
+// ------------------------------------------------------------------------------
+// ХРОНОЛОГИЯ ЛАБОРАТОРНЫХ РАБОТ СЕМЕСТРА (Группа ПМ-1-24)
+// По 1 лабе на сдвоенные пары по расписанию КГЭУ
+// ------------------------------------------------------------------------------
+const SUBJECT_LAB_TIMELINE = {
+  'Исследование операций': {
+    unit: 'Лабораторная работа',
+    dates: ['2026-09-03', '2026-09-16', '2026-09-30', '2026-10-14', '2026-10-28', '2026-11-11', '2026-11-25', '2026-12-09']
+  },
+  'Маркетинг ИТ-продуктов': {
+    unit: 'Лабораторная работа',
+    dates: ['2026-09-10', '2026-09-24', '2026-10-08', '2026-10-22', '2026-11-05', '2026-11-19', '2026-12-03', '2026-12-17']
+  },
+  'Сетевое планирование и управление ИТ-проектами': {
+    unit: 'Лабораторная работа',
+    dates: ['2026-09-11', '2026-09-25', '2026-10-09', '2026-10-23', '2026-11-06', '2026-11-20', '2026-12-04', '2026-12-18']
+  },
+  'Интерфейс программных продуктов': {
+    unit: 'Лабораторная работа',
+    dates: ['2026-09-12', '2026-09-26', '2026-10-10', '2026-10-24', '2026-11-07', '2026-11-21', '2026-12-05', '2026-12-19']
+  },
+  'Web-программирование': {
+    unit: 'Лабораторная работа',
+    dates: ['2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10', '2026-11-24', '2026-12-08']
+  },
+  'Статистика': {
+    unit: 'Лабораторная работа',
+    dates: ['2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10', '2026-11-24', '2026-12-08']
+  },
+  'Оценка эффективности ИТ-проектов': {
+    unit: 'Кейс',
+    dates: ['2026-09-18', '2026-10-02', '2026-10-16', '2026-10-30', '2026-11-13', '2026-11-27', '2026-12-11']
+  }
+};
+
+// ------------------------------------------------------------------------------
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ И УТИЛИТЫ ДАТ/СТРОК
+// ------------------------------------------------------------------------------
+
+/** Текущая дата в формате YYYY-MM-DD */
+function getTodayDateStr() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** Форматирование заголовка дня («Среда — 18.11.2026») */
+function formatFullDayTitle(dateStr) {
+  if (!dateStr) return '';
+  const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
+  const dt = new Date(dateStr);
+  const dayName = days[dt.getDay()];
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const yyyy = dt.getFullYear();
+  return `${dayName} — ${dd}.${mm}.${yyyy}`;
+}
+
+/** Форматирование заголовка недели («Вся неделя — 16.11 – 22.11.2026») */
+function formatCustomWeekTitle(startDateStr, endDateStr) {
+  if (!startDateStr || !endDateStr) return '';
+  const d1 = new Date(startDateStr);
+  const d2 = new Date(endDateStr);
+  const dd1 = String(d1.getDate()).padStart(2, '0');
+  const mm1 = String(d1.getMonth() + 1).padStart(2, '0');
+  const dd2 = String(d2.getDate()).padStart(2, '0');
+  const mm2 = String(d2.getMonth() + 1).padStart(2, '0');
+  const yyyy2 = d2.getFullYear();
+  return `Вся неделя — ${dd1}.${mm1} – ${dd2}.${mm2}.${yyyy2}`;
+}
+
+/** Очистка названий задач от устаревшего префикса "TODO:" */
+function cleanTaskTitle(title) {
+  if (!title) return '';
+  return String(title).replace(/^\s*TODO:\s*/iu, '').trim();
+}
+
+/**
+ * Парсер строки дисциплины из API КГЭУ
+ * Например: "лек Маркетинг ИТ-продуктов" -> { type: 'Лекция', typeKey: 'lecture', title: 'Маркетинг ИТ-продуктов' }
+ */
+function parseDiscipline(rawName) {
+  if (!rawName) {
+    return { 
+      type: 'Занятие', 
+      typeKey: 'other', 
+      title: '—', 
+      badgeClass: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' 
+    };
+  }
+  const trimmed = String(rawName).trim();
+  if (trimmed.startsWith('лек ')) {
+    return {
+      type: 'Лекция',
+      typeKey: 'lecture',
+      title: trimmed.replace(/^лек\s+/, ''),
+      badgeClass: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+    };
+  } else if (trimmed.startsWith('лаб ')) {
+    return {
+      type: 'Лабораторная',
+      typeKey: 'lab',
+      title: trimmed.replace(/^лаб\s+/, ''),
+      badgeClass: 'bg-purple-500/10 text-purple-600 dark:text-purple-400'
+    };
+  } else if (trimmed.startsWith('пр ')) {
+    return {
+      type: 'Практика',
+      typeKey: 'practice',
+      title: trimmed.replace(/^пр\s+/, ''),
+      badgeClass: 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
+    };
+  } else if (trimmed.startsWith('зач ')) {
+    return {
+      type: 'Зачет',
+      typeKey: 'exam',
+      title: trimmed.replace(/^зач\s+/, ''),
+      badgeClass: 'bg-red-500/10 text-red-600 dark:text-red-400'
+    };
+  } else if (trimmed.startsWith('экз ')) {
+    return {
+      type: 'Экзамен',
+      typeKey: 'exam',
+      title: trimmed.replace(/^экз\s+/, ''),
+      badgeClass: 'bg-rose-500/10 text-rose-600 dark:text-rose-400'
+    };
+  }
+  return {
+    type: 'Занятие',
+    typeKey: 'other',
+    title: trimmed,
+    badgeClass: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+  };
+}
+
+/** Уникальный ключ для идентификации пары в расписании */
+function getPairKey(item) {
+  if (!item) return '';
+  const dateStr = item.дата ? item.дата.split('T')[0] : '';
+  const num = item.номерЗанятия || '';
+  const time = (item.начало || '').trim();
+  const sub = item.номерПодгруппы || 0;
+  const disc = (item.дисциплина || '').trim().toLowerCase();
+  return `${dateStr}_${num}_${time}_${sub}_${disc}`;
+}
+
+/** Возвращает массив из 7 дат (Пн..Вс) недели для указанной даты */
+function getWeekDates(targetDateStr) {
+  if (!targetDateStr) return [];
+  const target = new Date(targetDateStr);
+  const day = target.getDay(); // 0 (Вс) .. 6 (Сб)
+  const diff = (day === 0 ? -6 : 1) - day;
+  const monday = new Date(target);
+  monday.setDate(target.getDate() + diff);
+
+  const week = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dayNum = String(d.getDate()).padStart(2, '0');
+    week.push(`${y}-${m}-${dayNum}`);
+  }
+  return week;
+}
+
+/** Проверяет, идет ли пара прямо сейчас */
+function isPairCurrent(startIso, endIso) {
+  if (!startIso || !endIso) return false;
+  const now = new Date();
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  return now >= start && now <= end;
+}
+
+// ------------------------------------------------------------------------------
+// ОСНОВНОЕ ПРИЛОЖЕНИЕ VUE 3
+// ------------------------------------------------------------------------------
 createApp({
   setup() {
     // --------------------------------------------------------------------------
@@ -67,38 +248,6 @@ createApp({
       date: '',
       text: ''
     });
-
-    // Хронология лабораторных работ семестра (по 1 лабе на сдвоенные пары)
-    const SUBJECT_LAB_TIMELINE = {
-      'Исследование операций': {
-        unit: 'Лабораторная работа',
-        dates: ['2026-09-03', '2026-09-16', '2026-09-30', '2026-10-14', '2026-10-28', '2026-11-11', '2026-11-25', '2026-12-09']
-      },
-      'Маркетинг ИТ-продуктов': {
-        unit: 'Лабораторная работа',
-        dates: ['2026-09-10', '2026-09-24', '2026-10-08', '2026-10-22', '2026-11-05', '2026-11-19', '2026-12-03', '2026-12-17']
-      },
-      'Сетевое планирование и управление ИТ-проектами': {
-        unit: 'Лабораторная работа',
-        dates: ['2026-09-11', '2026-09-25', '2026-10-09', '2026-10-23', '2026-11-06', '2026-11-20', '2026-12-04', '2026-12-18']
-      },
-      'Интерфейс программных продуктов': {
-        unit: 'Лабораторная работа',
-        dates: ['2026-09-12', '2026-09-26', '2026-10-10', '2026-10-24', '2026-11-07', '2026-11-21', '2026-12-05', '2026-12-19']
-      },
-      'Web-программирование': {
-        unit: 'Лабораторная работа',
-        dates: ['2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10', '2026-11-24', '2026-12-08']
-      },
-      'Статистика': {
-        unit: 'Лабораторная работа',
-        dates: ['2026-09-15', '2026-09-29', '2026-10-13', '2026-10-27', '2026-11-10', '2026-11-24', '2026-12-08']
-      },
-      'Оценка эффективности ИТ-проектов': {
-        unit: 'Кейс',
-        dates: ['2026-09-18', '2026-10-02', '2026-10-16', '2026-10-30', '2026-11-13', '2026-11-27', '2026-12-11']
-      }
-    };
 
     // --------------------------------------------------------------------------
     // 2. ВЫЧИСЛЯЕМЫЕ СВОЙСТВА (COMPUTED)
@@ -227,7 +376,7 @@ createApp({
     // Заметки на выбранный день (общие, не привязанные к конкретной паре)
     const dayGeneralNotes = computed(() => {
       if (currentViewMode.value !== 'day') return [];
-      return (todoData.value.customNotes || []).filter(
+      return (todoData.value?.customNotes || []).filter(
         n => n.date === selectedDate.value && !n.pairKey
       );
     });
@@ -242,12 +391,12 @@ createApp({
       currentViewMode.value = 'day';
     }
 
-    // Переключение режима «Один день» / «Вся неделя»
+    // Переключение между режимами «Один день» и «Вся неделя»
     function toggleWeekView() {
       currentViewMode.value = currentViewMode.value === 'week' ? 'day' : 'week';
     }
 
-    // Навигация по месяцам календаря
+    // Предыдущий месяц в календаре
     function prevMonth() {
       calendarMonth.value = new Date(
         calendarMonth.value.getFullYear(),
@@ -256,6 +405,7 @@ createApp({
       );
     }
 
+    // Следующий месяц в календаре
     function nextMonth() {
       calendarMonth.value = new Date(
         calendarMonth.value.getFullYear(),
@@ -264,24 +414,25 @@ createApp({
       );
     }
 
+    // Возврат календаря на сегодняшний день
     function resetToToday() {
-      const today = getTodayDateStr();
-      selectedDate.value = today;
+      const todayStr = getTodayDateStr();
+      selectedDate.value = todayStr;
       calendarMonth.value = new Date();
-      currentViewMode.value = 'day';
     }
 
-    // Открытие/закрытие плашки фильтра
+    // Открытие/закрытие выпадающей плашки фильтров
     function toggleFiltersDropdown() {
       isFiltersOpen.value = !isFiltersOpen.value;
     }
 
-    function selectFilter(typeKey) {
-      activeTypeFilter.value = typeKey;
+    // Выбор фильтра типа занятий (все, лекции, лабы, практики)
+    function selectFilter(filterType) {
+      activeTypeFilter.value = filterType;
       isFiltersOpen.value = false;
     }
 
-    // Переключение темной/светлой темы
+    // Переключение темы (светлая / тёмная)
     function toggleTheme() {
       isDark.value = !isDark.value;
       if (isDark.value) {
@@ -293,16 +444,16 @@ createApp({
       }
     }
 
-    // Переключение чекбокса стандартной лабораторной работы
-    function toggleTodoCheckbox(todoKey, isChecked) {
+    // Переключение чекбокса стандартной лабораторной
+    function toggleTodoCheckbox(key, isChecked) {
       if (!todoData.value.checkboxes) todoData.value.checkboxes = {};
-      todoData.value.checkboxes[todoKey] = isChecked;
+      todoData.value.checkboxes[key] = isChecked;
       saveTodoDataOnServer();
     }
 
-    // Переключение чекбокса добавленной заметки
-    function toggleCustomNoteCheckbox(noteId, isChecked) {
-      const note = (todoData.value.customNotes || []).find(n => n.id === noteId);
+    // Переключение чекбокса кастомной заметки
+    function toggleCustomNoteCheckbox(id, isChecked) {
+      const note = (todoData.value.customNotes || []).find(n => n.id === id);
       if (note) {
         note.completed = isChecked;
         saveTodoDataOnServer();
@@ -310,15 +461,15 @@ createApp({
     }
 
     // Удаление кастомной заметки
-    function deleteCustomNote(noteId) {
-      todoData.value.customNotes = (todoData.value.customNotes || []).filter(
-        n => n.id !== noteId
-      );
+    function deleteCustomNote(id) {
+      if (!confirm('Удалить эту задачу?')) return;
+      todoData.value.customNotes = (todoData.value.customNotes || []).filter(n => n.id !== id);
       saveTodoDataOnServer();
     }
 
-    // Удаление (скрытие) стандартной лабораторной
+    // Удаление стандартной лабы из списка (добавление в deletedDefaults)
     function deleteDefaultLab(todoKey) {
+      if (!confirm('Удалить эту лабораторную из списка?')) return;
       if (!todoData.value.deletedDefaults) todoData.value.deletedDefaults = [];
       if (!todoData.value.deletedDefaults.includes(todoKey)) {
         todoData.value.deletedDefaults.push(todoKey);
@@ -326,11 +477,11 @@ createApp({
       saveTodoDataOnServer();
     }
 
-    // Открытие модального окна для добавления задачи к паре
+    // Открытие модалки добавления задачи к конкретной паре
     function openAddPairNoteModal(pairKey, pairDate) {
       modal.value = {
         isOpen: true,
-        title: 'Добавить задачу к занятию',
+        title: 'Новая задача к паре',
         mode: 'add',
         targetType: 'pair',
         id: '',
@@ -340,11 +491,11 @@ createApp({
       };
     }
 
-    // Открытие модального окна для общей заметки на день
+    // Открытие модалки добавления общей заметки на день
     function openAddDayNoteModal() {
       modal.value = {
         isOpen: true,
-        title: 'Заметка на день',
+        title: 'Новая заметка на день',
         mode: 'add',
         targetType: 'day',
         id: '',
@@ -354,39 +505,42 @@ createApp({
       };
     }
 
-    // Открытие модального окна для редактирования кастомной заметки
-    function openEditCustomNoteModal(note) {
+    // Открытие модалки редактирования кастомной заметки
+    function openEditCustomNoteModal(task) {
       modal.value = {
         isOpen: true,
-        title: 'Редактировать заметку',
+        title: 'Редактировать задачу',
         mode: 'edit',
         targetType: 'custom',
-        id: note.id,
-        pairKey: note.pairKey || '',
-        date: note.date || selectedDate.value,
-        text: cleanTaskTitle(note.text)
+        id: task.id,
+        pairKey: task.pairKey || '',
+        date: task.date || selectedDate.value,
+        text: cleanTaskTitle(task.text)
       };
     }
 
-    // Открытие модального окна для переименования стандартной лабы
-    function openEditDefaultLabModal(todoKey, currentLabel) {
+    // Открытие модалки редактирования стандартной лабораторной
+    function openEditDefaultLabModal(todoKey, defaultText) {
+      const current = todoData.value.editedDefaults?.[todoKey] || defaultText;
       modal.value = {
         isOpen: true,
-        title: 'Редактировать название работы',
+        title: 'Переименовать лабораторную',
         mode: 'edit',
         targetType: 'default_lab',
         id: todoKey,
         pairKey: '',
         date: '',
-        text: cleanTaskTitle(todoData.value.editedDefaults?.[todoKey] || currentLabel)
+        text: cleanTaskTitle(current)
       };
     }
 
+    // Закрытие модального окна
     function closeModal() {
       modal.value.isOpen = false;
+      modal.value.text = '';
     }
 
-    // Сохранение заметки из модального окна
+    // Сохранение данных из модального окна
     function handleModalSubmit() {
       const text = cleanTaskTitle(modal.value.text);
       if (!text) return;
@@ -421,6 +575,7 @@ createApp({
       const val = cleanTaskTitle(input.value);
       if (!val) return;
 
+      if (!todoData.value.customNotes) todoData.value.customNotes = [];
       todoData.value.customNotes.push({
         id: 'note_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
         pairKey: null,
@@ -559,9 +714,24 @@ createApp({
     // 5. ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ КАРТОЧЕК
     // --------------------------------------------------------------------------
 
-    function getLabInfo(subjectTitle, dateStr) {
+    /** Информация о лабораторной работе для карточки пары */
+    function getLabInfo(subjectOrPair, maybeDateStr) {
+      let subjectTitle = '';
+      let dateStr = '';
+      if (typeof subjectOrPair === 'object' && subjectOrPair !== null) {
+        const disc = parseDiscipline(subjectOrPair.дисциплина);
+        if (disc.typeKey !== 'lab') return null;
+        subjectTitle = disc.title;
+        dateStr = subjectOrPair.дата ? subjectOrPair.дата.split('T')[0] : selectedDate.value;
+      } else {
+        subjectTitle = subjectOrPair || '';
+        dateStr = maybeDateStr || selectedDate.value;
+      }
+
+      if (!subjectTitle) return null;
+
       let matched = null;
-      const cleanTitle = (subjectTitle || '').toLowerCase();
+      const cleanTitle = subjectTitle.toLowerCase();
 
       for (const k of Object.keys(SUBJECT_LAB_TIMELINE)) {
         const kLow = k.toLowerCase();
@@ -611,6 +781,7 @@ createApp({
       };
     }
 
+    /** Получение кастомных задач, привязанных к конкретной паре */
     function getCustomTasksForPair(item) {
       const key = getPairKey(item);
       return (todoData.value.customNotes || []).filter(n => n.pairKey === key);
@@ -643,6 +814,9 @@ createApp({
       loadSchedule();
     });
 
+    // --------------------------------------------------------------------------
+    // 7. ВОЗВРАТ ПЕРЕМЕННЫХ И МЕТОДОВ В ШАБЛОН HTML
+    // --------------------------------------------------------------------------
     return {
       groupId,
       selectedDate,
@@ -689,41 +863,3 @@ createApp({
     };
   }
 }).mount('#app');
-
-// ------------------------------------------------------------------------------
-// ГЛОБАЛЬНЫЕ УТИЛИТЫ ДАТ И СТРОК
-// ------------------------------------------------------------------------------
-function getTodayDateStr() {
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = String(now.getMonth() + 1).padStart(2, '0');
-  const d = String(now.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
-function formatFullDayTitle(dateStr) {
-  if (!dateStr) return '';
-  const days = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
-  const dt = new Date(dateStr);
-  const dayName = days[dt.getDay()];
-  const dd = String(dt.getDate()).padStart(2, '0');
-  const mm = String(dt.getMonth() + 1).padStart(2, '0');
-  const yyyy = dt.getFullYear();
-  return `${dayName} — ${dd}.${mm}.${yyyy}`;
-}
-
-function formatCustomWeekTitle(startDateStr, endDateStr) {
-  const d1 = new Date(startDateStr);
-  const d2 = new Date(endDateStr);
-  const dd1 = String(d1.getDate()).padStart(2, '0');
-  const mm1 = String(d1.getMonth() + 1).padStart(2, '0');
-  const dd2 = String(d2.getDate()).padStart(2, '0');
-  const mm2 = String(d2.getMonth() + 1).padStart(2, '0');
-  const yyyy2 = d2.getFullYear();
-  return `Вся неделя — ${dd1}.${mm1} – ${dd2}.${mm2}.${yyyy2}`;
-}
-
-function cleanTaskTitle(title) {
-  if (!title) return '';
-  return String(title).replace(/^\s*TODO:\s*/iu, '').trim();
-}
